@@ -1,0 +1,195 @@
+\documentclass[11pt,a4paper]{article}
+
+% ----------------------------
+% Packages
+% ----------------------------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{geometry}
+\geometry{margin=1in}
+
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{cite}
+\usepackage{enumitem}
+
+\setlist{nosep}
+
+% ----------------------------
+% Metadata
+% ----------------------------
+\title{Satellite Planning and Dimensioning: Project Report\\
+\large Proofs of Concept, Market Exploration, and Lessons Learned}
+
+\author{
+Author Name \\
+Institution / École d’Ingénieurs \\
+Project / Grant Reference
+}
+
+\author{
+Author Name \\
+Institution / École d’Ingénieurs \\
+Project / Grant Reference
+}
+
+
+\date{\today}
+
+% ----------------------------
+% Document
+% ----------------------------
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This report summarizes the objectives, technical work, market exploration, and outcomes of the project funded by BPI. 
+We describe the initial hypotheses, the approaches investigated, experimental results (including negative findings),
+and the implications for future development and industrialization.
+\end{abstract}
+
+\section{Executive Summary}
+% This section provides a concise, non-marketing summary of:
+% (i) the problem addressed,
+% (ii) what was attempted,
+% (iii) what was learned,
+% (iv) what remains unresolved.
+% It should be understandable without technical background.
+
+\section{Problem Statement and Motivation}
+\subsection{Technical Problem}
+% Describe the core technical challenge.
+% State clearly what was unknown or risky at project start.
+
+\subsection{Market Opportunity}
+% Describe the target context, users, and use cases.
+% Explain why this problem matters economically or operationally.
+
+\section{State of the Art}
+\subsection{Existing Technical Approaches}
+% Summarize relevant academic and industrial solutions.
+% Clearly distinguish prior art from project contributions.
+
+\subsection{Limitations of Existing Solutions}
+% Explain why existing approaches are insufficient.
+% This justifies the project’s necessity.
+
+\section{Initial Hypotheses and Objectives}
+% List the main technical and market hypotheses tested.
+% Clarify success criteria and assumptions.
+
+\section{Technical Approach}
+\subsection{System Overview}
+% Provide a high-level description of the architecture or methodology.
+
+\subsection{Formal Model or Algorithm}
+% When relevant, introduce mathematical notation.
+% For example, let $x \in \mathbb{R}^n$ denote the input vector,
+% $\theta$ the model parameters, and $f_\theta(x)$ the system output.
+% Define all symbols explicitly.
+
+\subsection{Implementation Details}
+% Languages, tools, constraints, and design decisions.
+
+\section{Product Specification: LEO Dimensioning Solution (v0.1)}
+\subsection{Purpose}
+Provide a dimensioning decision for a LEO satellite operator: the minimum number of satellites required to meet
+operator-defined quality-of-service (QoS) targets, under priors on user demand/mobility and
+satellite distributions. An example user could be an operator providing satellite internet.
+
+\subsection{Users}
+Day-to-day users are LEO satellite operators who own and operate satellite constellations.
+
+\subsection{Decision and Optimisation Target}
+The product outputs a recommended constellation size $N$ (number of satellites) such that QoS is satisfied with high
+probability.
+In v0.1, the optimisation objective is QoS feasibility (not cost, routing, or detailed PHY performance).
+
+\subsection{Geographic Usage Zones (v0.1)}
+In v0.1, the operator specifies a single latitude band:
+\[
+[\mathrm{lat}_{\min}, \mathrm{lat}_{\max}], \quad \mathrm{lat}_{\min} \le \mathrm{lat}_{\max}.
+\]
+Users are drawn only from within this band.
+
+\subsection{Inputs (v0.1)}
+\begin{itemize}
+    \item Latitude band $[\mathrm{lat}_{\min}, \mathrm{lat}_{\max}]$.
+    \item Priors for user distribution and mobility (e.g., moving users such as trains and planes).
+    \item Priors for satellite distribution/constellation model (parameterised by $N$).
+    \item QoS targets: minimum coverage and minimum throughput (see below).
+    \item Certification parameters: confidence level $1-\alpha$ and feasibility target $p_{\mathrm{target}}$.
+\end{itemize}
+
+\subsection{Outputs (v0.1)}
+\begin{itemize}
+    \item Recommended minimum constellation size $N$.
+    \item Certificate: a confidence-backed lower bound on $\mathbb{P}(\text{QoS met})$ under the stated priors.
+    \item Reproducibility artifact: simulator configuration and seeds sufficient to replay the certification run.
+\end{itemize}
+
+\subsection{QoS Definition (v0.1)}
+QoS is defined by two minimum constraints that must both be met:
+\begin{itemize}
+    \item \textbf{Coverage}: at least $C_{\min}$ fraction of users in the latitude band are served (exact definition of
+    ``served'' to be specified by the simulator model).
+    \item \textbf{Throughput}: at least $R_{\min}$ throughput is delivered (exact definition to be specified; in v0.1 this is
+    expected to be driven by a simplified satellite physical resource block (PRB) capacity model).
+\end{itemize}
+
+\subsection{Statistical Certification (v0.1)}
+Define a Bernoulli per-trial success event $A$ where $A=1$ iff both QoS constraints (coverage and throughput) are met in
+that trial.
+Let $p := \mathbb{P}(A=1)$ under the stated priors and simulator configuration.
+The product certifies feasibility by returning, with confidence $1-\alpha$, a lower confidence bound $\mathrm{LCB}(p)$ and
+declaring the design feasible if $\mathrm{LCB}(p) \ge p_{\mathrm{target}}$.
+
+\subsection{Scope and Non-Goals (v0.1)}
+\begin{itemize}
+    \item \textbf{In scope}: QoS-driven constellation size dimensioning with certification; simplified capacity model via a
+    PRB grid on satellites; minimal corresponding user properties needed to consume PRBs.
+    \item \textbf{Out of scope}: detailed PHY/link-budget simulation; full network routing; end-to-end application performance.
+\end{itemize}
+
+\subsection{Implementation Constraint (v0.1)}
+The v0.1 specification must be achievable with minimal changes to the existing codebase; planned additions are limited to
+introducing a PRB grid on satellites (previously modelled as capacity-free points) and minimal corresponding user properties.
+
+\section{Experiments and Results}
+\subsection{Experimental Setup}
+% Datasets, evaluation protocol, baselines, and metrics.
+
+\subsection{Results}
+% Present quantitative and qualitative results.
+% Include tables and figures where appropriate.
+
+\subsection{Negative Results and Limitations}
+% Explicitly document what did not work and why.
+% This section is important for funding evaluation.
+
+\section{Market Validation Efforts}
+% Describe interviews, pilots, or tests conducted.
+% State what evidence was obtained and what remains inconclusive.
+
+\section{Key Learnings}
+% Summarize technical and market insights gained.
+% Distinguish validated assumptions from rejected ones.
+
+\section{Remaining Risks and Open Questions}
+% Identify unresolved technical, operational, or market risks.
+
+\section{Next Steps and Industrialization Path}
+% Describe realistic next steps.
+% Explain how additional funding or partnerships would reduce remaining risks.
+
+\section*{Acknowledgments}
+% Optional. Acknowledge funding support and collaborators.
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}

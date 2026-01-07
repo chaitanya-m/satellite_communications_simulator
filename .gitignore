@@ -10,7 +10,11 @@ __pycache__/
 # Experiment outputs
 
 # Docs
-docs/
+docs/refs/
+docs/*.aux
+docs/*.log
+docs/*.out
+docs/*.pdf
 
 # Top-level shell scripts
 /*.sh

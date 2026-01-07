@@ -95,7 +95,7 @@ and the implications for future development and industrialization.
 \subsection{Implementation Details}
 % Languages, tools, constraints, and design decisions.
 
-\section{Product Specification: LEO Dimensioning Solution (v0.1)}
+\section{Product Specification: LEO Dimensioning Solution (v0.2)}
 \subsection{Purpose}
 Provide a dimensioning decision for a LEO satellite operator: the minimum number of satellites required to meet
 operator-defined quality-of-service (QoS) targets, under priors on user demand/mobility and
@@ -109,14 +109,14 @@ The product outputs a recommended constellation size $N$ (number of satellites) 
 probability.
 In v0.1, the optimisation objective is QoS feasibility (not cost, routing, or detailed PHY performance).
 
-\subsection{Geographic Usage Zones (v0.1)}
-In v0.1, the operator specifies a single latitude band:
+\subsection{Geographic Usage Zones}
+The operator specifies a single latitude band:
 \[
 [\mathrm{lat}_{\min}, \mathrm{lat}_{\max}], \quad \mathrm{lat}_{\min} \le \mathrm{lat}_{\max}.
 \]
 Users are drawn only from within this band.
 
-\subsection{Inputs (v0.1)}
+\subsection{Inputs}
 \begin{itemize}
     \item Latitude band $[\mathrm{lat}_{\min}, \mathrm{lat}_{\max}]$.
     \item Priors for user distribution and mobility (e.g., moving users such as trains and planes).
@@ -125,38 +125,38 @@ Users are drawn only from within this band.
     \item Certification parameters: confidence level $1-\alpha$ and feasibility target $p_{\mathrm{target}}$.
 \end{itemize}
 
-\subsection{Outputs (v0.1)}
+\subsection{Outputs}
 \begin{itemize}
     \item Recommended minimum constellation size $N$.
     \item Certificate: a confidence-backed lower bound on $\mathbb{P}(\text{QoS met})$ under the stated priors.
     \item Reproducibility artifact: simulator configuration and seeds sufficient to replay the certification run.
 \end{itemize}
 
-\subsection{QoS Definition (v0.1)}
+\subsection{QoS Definition}
 QoS is defined by two minimum constraints that must both be met:
 \begin{itemize}
     \item \textbf{Coverage}: at least $C_{\min}$ fraction of users in the latitude band are served (exact definition of
     ``served'' to be specified by the simulator model).
-    \item \textbf{Throughput}: at least $R_{\min}$ throughput is delivered (exact definition to be specified; in v0.1 this is
-    expected to be driven by a simplified satellite physical resource block (PRB) capacity model).
+    \item \textbf{Throughput}: at least $R_{\min}$ throughput is delivered (exact definition to be specified; expected to be
+    driven by a simplified satellite physical resource block (PRB) capacity model).
 \end{itemize}
 
-\subsection{Statistical Certification (v0.1)}
+\subsection{Statistical Certification}
 Define a Bernoulli per-trial success event $A$ where $A=1$ iff both QoS constraints (coverage and throughput) are met in
 that trial.
 Let $p := \mathbb{P}(A=1)$ under the stated priors and simulator configuration.
 The product certifies feasibility by returning, with confidence $1-\alpha$, a lower confidence bound $\mathrm{LCB}(p)$ and
 declaring the design feasible if $\mathrm{LCB}(p) \ge p_{\mathrm{target}}$.
 
-\subsection{Scope and Non-Goals (v0.1)}
+\subsection{Scope and Non-Goals}
 \begin{itemize}
     \item \textbf{In scope}: QoS-driven constellation size dimensioning with certification; simplified capacity model via a
     PRB grid on satellites; minimal corresponding user properties needed to consume PRBs.
     \item \textbf{Out of scope}: detailed PHY/link-budget simulation; full network routing; end-to-end application performance.
 \end{itemize}
 
-\subsection{Implementation Constraint (v0.1)}
-The v0.1 specification must be achievable with minimal changes to the existing codebase; planned additions are limited to
+\subsection{Implementation Constraint}
+The specification must be achievable with minimal changes to the existing codebase; planned additions are limited to
 introducing a PRB grid on satellites (previously modelled as capacity-free points) and minimal corresponding user properties.
 
 \section{Experiments and Results}
@@ -185,6 +185,20 @@ introducing a PRB grid on satellites (previously modelled as capacity-free point
 \section{Next Steps and Industrialization Path}
 % Describe realistic next steps.
 % Explain how additional funding or partnerships would reduce remaining risks.
+
+\appendix
+\section{Appendix: v0.1 Delivered Product Summary}
+Version 0.1 delivered a certified dimensioning capability for LEO operators focused on coverage feasibility under
+stochastic user and satellite distributions. The product produced a minimum constellation size $N$ satisfying coverage
+constraints with statistical certification, using a simplified world simulator and Monte Carlo trials. While a 2D circular world
+was used for testing, the framework and certification method were already suitable for extension to a 3D spherical world. 
+
+In v0.1, both ground stations and satellites were modelled as Poisson point processes, with the design variable being
+the satellite Poisson mean. A trial sampled Poisson counts, placed points, computed a coverage fraction, and
+declared success if coverage met a target. The certificate reported a lower confidence bound on the true success
+probability based on multiple seeded simulations, and the solution was the minimum Poisson mean whose bound met the target confidence level.
+
+Throughput modelling via PRB capacity, detailed physical layer / link budgets, and full network routing were not part of v0.1 scope.
 
 \section*{Acknowledgments}
 % Optional. Acknowledge funding support and collaborators.

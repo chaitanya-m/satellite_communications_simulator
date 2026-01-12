@@ -6,6 +6,7 @@ __pycache__/
 
 # OS noise
 .DS_Store
+.venv/
 
 # Experiment outputs
 

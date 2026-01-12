@@ -106,6 +106,17 @@ QoS will be defined by two minimum constraints that must both be met:
     \item \textbf{Throughput}: at least $R_{\min}$ throughput is delivered (exact definition to be specified; expected to be
     driven by a simplified satellite physical resource block (PRB) capacity model).
 \end{itemize}
+To preserve plug-and-play separation, v0.3 introduces a global simulator configuration passed from the orchestrator to
+the simulator only. Experiments, certificates, orchestration logic, and optimisers remain unchanged and consume only
+aggregated metrics. The simulator config is responsible for selecting and parameterising PRB models, demand generators,
+and allocation policies, and for defining the output throughput metric used by the experiment.
+Coverage and throughput functions must be configurable plugins so alternative definitions can be swapped without
+changing experiment or certificate code.
+\begin{itemize}
+    \item \textbf{v0.3.1}: define and validate the adapter boundary and simulator config contract.
+    \item \textbf{v0.3.2}: introduce PRB capacity modelling and add simulator-level tests.
+    \item \textbf{v0.3.3}: add an end-to-end coverage + throughput dimensioning test.
+\end{itemize}
 
 \subsection{Ideas (Post-v0.3)}
 \begin{itemize}

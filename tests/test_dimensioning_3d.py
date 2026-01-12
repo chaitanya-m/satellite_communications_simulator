@@ -3,6 +3,8 @@
 
 import random
 
+from experiments.satellites.min_feasible_coverage import MinLambdaForCoverage
+from orchestrator.certificates.bernoulli import AllSuccessCertificate
 from sim.dimensioning_3d import Dimensioning_3D
 from sim.stochastic.poisson import sample_poisson
 
@@ -86,3 +88,49 @@ def test_dimensioning_3d_many_points_nonzero_coverage():
     assert metrics["n_ground"] > 0.0
     assert metrics["n_sats"] > 0.0
     assert 0.0 < metrics["coverage"] <= 1.0
+
+
+def test_dimensioning_3d_sequential_search_stops():
+    """Sequentially search N and stop at the first certified feasible design."""
+    target_coverage = 0.7
+    delta = 0.3
+    alpha = 0.05
+
+    experiment = MinLambdaForCoverage(target_coverage=target_coverage)
+    certificate = AllSuccessCertificate(alpha=alpha)
+
+    ground_lambda = 500.0
+    max_designs = 400
+    evals_per_design = 100
+    seed = 1000
+
+    design = None
+    for n in range(1, max_designs + 1, 10):
+        lam = float(n)
+        for _ in range(evals_per_design):
+            rng = random.Random(seed)
+            seed += 1
+
+            sim = Dimensioning_3D(
+                ground_lambda=ground_lambda,
+                lat_min_deg=-10.0,
+                lat_max_deg=10.0,
+                altitude_km=550.0,
+                max_off_nadir_deg=60.0,
+                rng=rng,
+            )
+
+            metrics = sim.evaluate(lambda_sats=lam)
+            experiment.on_evaluation(lam, metrics)
+
+        lcb = certificate.lower_confidence_bound(
+            experiment._successes.get(lam, 0),
+            experiment._trials.get(lam, 0),
+        )
+        if lcb >= 1.0 - delta:
+            design = n
+            print(f"certified N={n} with LCB={lcb:.3f}")
+            break
+
+    assert design is not None, "No design certified feasible within the search budget"
+    assert design > 100

@@ -64,6 +64,11 @@ class Dimensioning_3D:
 
         self._cos_off_nadir_max = math.cos(math.radians(self.max_off_nadir_deg))
         self._sat_lat_min, self._sat_lat_max = self._satellite_lat_bounds()
+        # Horizon gating constant: cos(phi_horizon) = R / r. Any satellite with
+        # cos(phi) < cos(phi_horizon) is below the horizon and cannot be visible,
+        # regardless of off-nadir angle.
+        r = self.earth_radius_km + self.altitude_km
+        self._cos_horizon = self.earth_radius_km / r
 
     def _satellite_lat_bounds(self) -> tuple[float, float]:
         """Return a coarse latitude band for satellite sampling.
@@ -172,6 +177,10 @@ class Dimensioning_3D:
             for slat, slon in sat_points:
                 cos_phi = self._cos_central_angle(glat, glon, slat, slon)
                 cos_phi = max(-1.0, min(1.0, cos_phi))
+                # Line-of-sight / horizon gate: if the satellite is beyond the
+                # geometric horizon, skip it before applying off-nadir gating.
+                if cos_phi < self._cos_horizon:
+                    continue
                 cos_psi = self._cos_off_nadir(cos_phi)
                 if cos_psi >= self._cos_off_nadir_max:
                     visible = True

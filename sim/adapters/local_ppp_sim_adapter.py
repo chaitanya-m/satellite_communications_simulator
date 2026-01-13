@@ -23,6 +23,12 @@ class LocalPPPSimulatorAdapter(SimulatorAdapter):
             raise ConfigValidationError("altitude_km must be positive")
         if config.visibility.max_off_nadir_deg <= 0.0:
             raise ConfigValidationError("max_off_nadir_deg must be positive")
+        if config.channel_quality.bandwidth_hz <= 0.0:
+            raise ConfigValidationError("bandwidth_hz must be positive")
+        if config.channel_quality.sinr_sigma_db < 0.0:
+            raise ConfigValidationError("sinr_sigma_db must be non-negative")
+        if config.channel_quality.throughput_aggregation not in {"mean", "sum"}:
+            raise ConfigValidationError("throughput_aggregation must be 'mean' or 'sum'")
         self._config = config
 
     def run_trial(self, *, design: Any, seed: int) -> Dict[str, float]:
@@ -38,6 +44,10 @@ class LocalPPPSimulatorAdapter(SimulatorAdapter):
             altitude_km=cfg.satellites.altitude_km,
             max_off_nadir_deg=cfg.visibility.max_off_nadir_deg,
             earth_radius_km=cfg.world.earth_radius_km,
+            sinr_mu_db=cfg.channel_quality.sinr_mu_db,
+            sinr_sigma_db=cfg.channel_quality.sinr_sigma_db,
+            bandwidth_hz=cfg.channel_quality.bandwidth_hz,
+            throughput_aggregation=cfg.channel_quality.throughput_aggregation,
             rng=rng,
         )
         return sim.evaluate(lambda_sats=float(design))
@@ -45,5 +55,5 @@ class LocalPPPSimulatorAdapter(SimulatorAdapter):
     def describe(self) -> Dict[str, str]:
         return {
             "name": "local_ppp_3d",
-            "supports": "coverage",
+            "supports": "coverage, throughput",
         }

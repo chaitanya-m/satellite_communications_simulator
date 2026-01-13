@@ -98,39 +98,41 @@ and the implications for future development and industrialization.
 \section{Product Specification}
 The current product specification (v0.2) is documented in the appendix.
 
-\subsection{Planned v0.3: QoS and PRB Capacity}
+\subsection{Planned v0.3: QoS and Channel Quality}
 QoS will be defined by two minimum constraints that must both be met:
 \begin{itemize}
     \item \textbf{Coverage}: at least $C_{\min}$ fraction of users in the latitude band are served (exact definition of
     ``served'' to be specified by the simulator model).
     \item \textbf{Throughput}: at least $R_{\min}$ throughput is delivered (exact definition to be specified; expected to be
-    driven by a simplified satellite physical resource block (PRB) capacity model).
+    driven by a simple SINR-based capacity model).
 \end{itemize}
 
 \subsubsection{Discussion: Signal Quality and QoS Considerations}
 \begin{itemize}
+    \item Channel quality is defined as SINR with a lognormal model:
+    $10 \log_{10}(\mathrm{SINR}) \sim \mathcal{N}(\mu_{\mathrm{dB}}, \sigma_{\mathrm{dB}}^2)$, i.i.d. per link.
     \item Signal quality may degrade with Doppler and path length; these are known if the ephemeris is known.
     \item Angular velocity adds Doppler shift which degrades signal
-    \item With higher channel capacity, fewer PRBs are required; with lower capacity, more PRBs are required.
     \item Channel capacity model: $C = W \log(1 + \mathrm{SINR})$ with $\mathrm{SINR} = S / (I + N)$.
     \item QoS may be expressed as $\mathbb{P}(C \ge C_{\min})$ being sufficiently high.
+    \item With higher channel capacity, fewer resources are required; PRB mapping can be added later.
     \item Erlang-style traffic models may be relevant for network blocking and load.
     \item \textbf{Latency}: max 300 ms.
     \item \textbf{KPIs / QoS}: consider explicit resource allocation to users based on the above.
 \end{itemize}
 To preserve plug-and-play separation, v0.3 introduces a global simulator configuration passed from the orchestrator to
 the simulator only. Experiments, certificates, orchestration logic, and optimisers remain unchanged and consume only
-aggregated metrics. The simulator config is responsible for selecting and parameterising PRB models, demand generators,
-and allocation policies, and for defining the output throughput metric used by the experiment.
+aggregated metrics. The simulator config is responsible for selecting and parameterising channel-quality models, demand
+generators, and allocation policies, and for defining the output throughput metric used by the experiment.
 Coverage and throughput functions must be configurable plugins so alternative definitions can be swapped without
 changing experiment or certificate code.
 \begin{itemize}
     \item \textbf{v0.3.1}: define and validate the adapter boundary and simulator config contract.
-    \item \textbf{v0.3.2}: introduce PRB capacity modelling and add simulator-level tests.
+    \item \textbf{v0.3.2}: introduce lognormal SINR channel-quality modelling and add simulator-level tests.
     \item \textbf{v0.3.3}: add an end-to-end coverage + throughput dimensioning test.
 \end{itemize}
 
-\subsection{v0.3.1: Adapter Boundary and Config Contract}
+\subsubsection{v0.3.1: Adapter Boundary and Config Contract}
 The adapter boundary formalises how the orchestrator interacts with a simulator backend.
 \begin{itemize}
     \item \textbf{Orchestrator input}: a validated \texttt{SimulationConfig} object (serialisable to JSON/YAML) that
@@ -145,7 +147,25 @@ The adapter boundary formalises how the orchestrator interacts with a simulator 
     output parsing issues.
 \end{itemize}
 
-\subsection{Ideas (Post-v0.3)}
+\subsubsection{v0.3.2: Lognormal SINR Channel Quality}
+v0.3.2 introduces a minimal, standard channel-quality model while keeping the math tractable.
+\begin{itemize}
+    \item \textbf{Channel quality definition}: per-link SINR with $10 \log_{10}(\mathrm{SINR})
+    \sim \mathcal{N}(\mu_{\mathrm{dB}}, \sigma_{\mathrm{dB}}^2)$, i.i.d. across links.
+    \item \textbf{dB convention}: SINR is a linear power ratio; its dB form is
+    $\mathrm{SINR}_{\mathrm{dB}} = 10 \log_{10}(\mathrm{SINR})$ with $10 \log_{10}(P_2 / P_1)$ for power ratios.
+    \item \textbf{Config}: add a channel-quality block to \texttt{SimulationConfig} with parameters
+    $\mu_{\mathrm{dB}}$, $\sigma_{\mathrm{dB}}$, bandwidth $W$, and a throughput aggregation rule.
+    \item \textbf{Throughput mapping}: default throughput uses $C = W \log(1 + \mathrm{SINR})$ on the
+    selected link per user (e.g., best visible SINR), with the aggregation rule configurable.
+    The default aggregation is mean throughput across users (not a percentile such as p10).
+    \item \textbf{Experiment and certificate}: add a throughput-aware Bernoulli experiment that
+    declares success when both coverage and throughput constraints are met, certified with the
+    existing Bernoulli confidence bounds.
+    \item \textbf{Scope}: no PRB modelling or spatial correlation in v0.3.2; those remain optional extensions.
+\end{itemize}
+
+\subsection{Ideas (Future versions)}
 \begin{itemize}
     \item Ephemeris-based constellation modelling with one or more orbital planes and deterministic phasing.
     \item Auto-compute feasible latitude bounds from ephemeris geometry and visibility constraints.

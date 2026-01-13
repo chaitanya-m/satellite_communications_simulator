@@ -37,6 +37,17 @@ class VisibilityConfig:
 
 
 @dataclass(frozen=True)
+class ChannelQualityConfig:
+    """Lognormal SINR model parameters and throughput mapping."""
+
+    sinr_mu_db: float
+    sinr_sigma_db: float
+    bandwidth_hz: float
+    # Aggregation over per-user capacities: mean (default) or sum.
+    throughput_aggregation: str = "mean"
+
+
+@dataclass(frozen=True)
 class SimulationConfig:
     """Root simulator config passed from the orchestrator to the adapter."""
 
@@ -44,6 +55,7 @@ class SimulationConfig:
     users: UsersConfig
     satellites: SatellitesConfig
     visibility: VisibilityConfig
+    channel_quality: ChannelQualityConfig
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize config to a plain dictionary for JSON/YAML output."""
@@ -59,4 +71,5 @@ class SimulationConfig:
             users=UsersConfig(**payload["users"]),
             satellites=SatellitesConfig(**payload["satellites"]),
             visibility=VisibilityConfig(**payload["visibility"]),
+            channel_quality=ChannelQualityConfig(**payload["channel_quality"]),
         )

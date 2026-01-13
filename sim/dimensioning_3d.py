@@ -5,6 +5,7 @@ This module intentionally keeps the model minimal and closed-form:
 - users are a Poisson point process (PPP) on a spherical Earth surface
 - satellites are a PPP on a spherical orbital shell
 - coverage is evaluated per user with a simple off-nadir visibility gate
+- channel quality uses a lognormal SINR model to produce throughput
 """
 
 from __future__ import annotations
@@ -33,8 +34,13 @@ class Dimensioning_3D:
         A ground user is covered if at least one satellite is within the
         max off-nadir angle (per-user visibility).
 
+    Throughput:
+        Per-user capacity uses the best visible link (highest sampled SINR),
+        aggregated across users by mean (default) or sum.
+
     Outputs:
         - coverage: fraction of users with at least one visible satellite
+        - throughput: aggregated per-user capacity via a lognormal SINR model
         - n_ground: sampled user count for the trial
         - n_sats: sampled satellite count for the trial
     """
@@ -48,6 +54,10 @@ class Dimensioning_3D:
         altitude_km: float,
         max_off_nadir_deg: float,
         earth_radius_km: float = 6371.0,
+        sinr_mu_db: float = 0.0,
+        sinr_sigma_db: float = 1.0,
+        bandwidth_hz: float = 1.0,
+        throughput_aggregation: str = "mean",
         rng: random.Random | None = None,
     ):
         self.ground_lambda = float(ground_lambda)
@@ -56,11 +66,18 @@ class Dimensioning_3D:
         self.altitude_km = float(altitude_km)
         self.max_off_nadir_deg = float(max_off_nadir_deg)
         self.earth_radius_km = float(earth_radius_km)
+        self.sinr_mu_db = float(sinr_mu_db)
+        self.sinr_sigma_db = float(sinr_sigma_db)
+        self.bandwidth_hz = float(bandwidth_hz)
+        self.throughput_aggregation = throughput_aggregation
         self.rng = rng or random.Random()
 
         # Last realised counts (for inspection / testing only)
         self.last_n_ground: int | None = None
         self.last_n_sats: int | None = None
+
+        if self.throughput_aggregation not in {"mean", "sum"}:
+            raise ValueError("throughput_aggregation must be 'mean' or 'sum'")
 
         self._cos_off_nadir_max = math.cos(math.radians(self.max_off_nadir_deg))
         self._sat_lat_min, self._sat_lat_max = self._satellite_lat_bounds()
@@ -138,6 +155,11 @@ class Dimensioning_3D:
         cos_psi = (r - R * cos_phi) / denom
         return max(-1.0, min(1.0, cos_psi))
 
+    def _sample_sinr_linear(self) -> float:
+        """Sample per-link SINR in linear scale from a lognormal model."""
+        sinr_db = self.rng.gauss(self.sinr_mu_db, self.sinr_sigma_db)
+        return 10.0 ** (sinr_db / 10.0)
+
     def evaluate(self, lambda_sats: float) -> dict[str, float]:
         """Run a single Monte Carlo trial at a given satellite intensity."""
         n_ground = sample_poisson(self.ground_lambda, self.rng)
@@ -149,6 +171,7 @@ class Dimensioning_3D:
         if n_ground == 0:
             return {
                 "coverage": 1.0,  # vacuously covered
+                "throughput": 0.0,
                 "n_ground": 0.0,
                 "n_sats": float(n_sats),
             }
@@ -156,6 +179,7 @@ class Dimensioning_3D:
         if n_sats == 0:
             return {
                 "coverage": 0.0,
+                "throughput": 0.0,
                 "n_ground": float(n_ground),
                 "n_sats": 0.0,
             }
@@ -172,8 +196,10 @@ class Dimensioning_3D:
 
         # Per-user visibility gating: require at least one satellite within off-nadir limit.
         covered = 0
+        throughput_sum = 0.0
         for glat, glon in ground_points:
             visible = False
+            best_capacity = 0.0
             for slat, slon in sat_points:
                 cos_phi = self._cos_central_angle(glat, glon, slat, slon)
                 cos_phi = max(-1.0, min(1.0, cos_phi))
@@ -184,13 +210,22 @@ class Dimensioning_3D:
                 cos_psi = self._cos_off_nadir(cos_phi)
                 if cos_psi >= self._cos_off_nadir_max:
                     visible = True
-                    break
+                    sinr_linear = self._sample_sinr_linear()
+                    capacity = self.bandwidth_hz * math.log1p(sinr_linear)
+                    if capacity > best_capacity:
+                        best_capacity = capacity
             if visible:
                 covered += 1
+            throughput_sum += best_capacity
 
         coverage = covered / n_ground
+        if self.throughput_aggregation == "sum":
+            throughput = throughput_sum
+        else:
+            throughput = throughput_sum / n_ground
         return {
             "coverage": coverage,
+            "throughput": throughput,
             "n_ground": float(n_ground),
             "n_sats": float(n_sats),
         }

@@ -165,6 +165,16 @@ v0.3.2 introduces a minimal, standard channel-quality model while keeping the ma
     \item \textbf{Scope}: no PRB modelling or spatial correlation in v0.3.2; those remain optional extensions.
 \end{itemize}
 
+\subsubsection{v0.3.3: Throughput-Aware Dimensioning}
+v0.3.3 integrates throughput into the dimensioning loop and certification workflow.
+\begin{itemize}
+    \item \textbf{End-to-end dimensioning}: run the search loop with the throughput-aware QoS experiment
+    and Bernoulli certificate, returning the minimum design that satisfies both coverage and throughput targets.
+    \item \textbf{Targets}: define $C_{\min}$ and $R_{\min}$ per run; certify feasibility using existing confidence
+    bounds (no new certificate type required).
+    \item \textbf{Outputs}: report the certified design and include coverage and throughput metrics used for acceptance.
+\end{itemize}
+
 \subsection{Ideas (Future versions)}
 \begin{itemize}
     \item Ephemeris-based constellation modelling with one or more orbital planes and deterministic phasing.

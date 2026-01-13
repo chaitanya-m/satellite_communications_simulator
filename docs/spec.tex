@@ -106,6 +106,18 @@ QoS will be defined by two minimum constraints that must both be met:
     \item \textbf{Throughput}: at least $R_{\min}$ throughput is delivered (exact definition to be specified; expected to be
     driven by a simplified satellite physical resource block (PRB) capacity model).
 \end{itemize}
+
+\subsubsection{Discussion: Signal Quality and QoS Considerations}
+\begin{itemize}
+    \item Signal quality may degrade with Doppler and path length; these are known if the ephemeris is known.
+    \item Angular velocity adds Doppler shift which degrades signal
+    \item With higher channel capacity, fewer PRBs are required; with lower capacity, more PRBs are required.
+    \item Channel capacity model: $C = W \log(1 + \mathrm{SINR})$ with $\mathrm{SINR} = S / (I + N)$.
+    \item QoS may be expressed as $\mathbb{P}(C \ge C_{\min})$ being sufficiently high.
+    \item Erlang-style traffic models may be relevant for network blocking and load.
+    \item \textbf{Latency}: max 300 ms.
+    \item \textbf{KPIs / QoS}: consider explicit resource allocation to users based on the above.
+\end{itemize}
 To preserve plug-and-play separation, v0.3 introduces a global simulator configuration passed from the orchestrator to
 the simulator only. Experiments, certificates, orchestration logic, and optimisers remain unchanged and consume only
 aggregated metrics. The simulator config is responsible for selecting and parameterising PRB models, demand generators,
@@ -118,6 +130,21 @@ changing experiment or certificate code.
     \item \textbf{v0.3.3}: add an end-to-end coverage + throughput dimensioning test.
 \end{itemize}
 
+\subsection{v0.3.1: Adapter Boundary and Config Contract}
+The adapter boundary formalises how the orchestrator interacts with a simulator backend.
+\begin{itemize}
+    \item \textbf{Orchestrator input}: a validated \texttt{SimulationConfig} object (serialisable to JSON/YAML) that
+    selects plugin implementations and provides their parameters.
+    \item \textbf{Simulator input}: backend-specific configuration derived from \texttt{SimulationConfig}
+    (e.g., config files, CLI flags, or API payloads).
+    \item \textbf{Simulator output}: a metrics dictionary with keys required by the experiment (e.g., \texttt{coverage},
+    later \texttt{throughput}).
+    \item \textbf{Determinism}: all per-trial randomness must be controlled by a trial seed supplied by the orchestrator,
+    ensuring repeatable trials for certification.
+    \item \textbf{Errors}: adapter must surface clear, typed errors for configuration validation, execution failures, and
+    output parsing issues.
+\end{itemize}
+
 \subsection{Ideas (Post-v0.3)}
 \begin{itemize}
     \item Ephemeris-based constellation modelling with one or more orbital planes and deterministic phasing.
@@ -125,6 +152,8 @@ changing experiment or certificate code.
     \item Alternative decision variables: number of planes $P$ and satellites per plane $S$ (with $N = P \times S$).
     \item Sample satellites within a latitude band and an orbital shell thickness (e.g., 100~km depth).
     \item Priors for user distribution and mobility (e.g., moving users such as trains and planes).
+    \item beta ginibre for better modelling of satellites (exponential falloff of finding a satellite nearby), 
+    \item determinental for ground dtation modelling (clusters of users)
 \end{itemize}
 
 

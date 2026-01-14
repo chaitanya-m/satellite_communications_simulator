@@ -96,83 +96,16 @@ and the implications for future development and industrialization.
 % Languages, tools, constraints, and design decisions.
 
 \section{Product Specification}
-The current product specification (v0.2) is documented in the appendix.
+Delivered product specifications (v0.2 and v0.3) are documented in the appendix.
 
-\subsection{Planned v0.3: QoS and Channel Quality}
-QoS will be defined by two minimum constraints that must both be met:
+\subsection{Planned v0.4: PRB Capacity and Allocation}
+v0.4 introduces explicit PRB modelling while keeping the rest of the architecture unchanged.
 \begin{itemize}
-    \item \textbf{Coverage}: at least $C_{\min}$ fraction of users in the latitude band are served (exact definition of
-    ``served'' to be specified by the simulator model).
-    \item \textbf{Throughput}: at least $R_{\min}$ throughput is delivered (exact definition to be specified; expected to be
-    driven by a simple SINR-based capacity model).
-\end{itemize}
-
-\subsubsection{Discussion: Signal Quality and QoS Considerations}
-\begin{itemize}
-    \item Channel quality is defined as SINR with a lognormal model:
-    $10 \log_{10}(\mathrm{SINR}) \sim \mathcal{N}(\mu_{\mathrm{dB}}, \sigma_{\mathrm{dB}}^2)$, i.i.d. per link.
-    \item Signal quality may degrade with Doppler and path length; these are known if the ephemeris is known.
-    \item Angular velocity adds Doppler shift which degrades signal
-    \item Channel capacity model: $C = W \log(1 + \mathrm{SINR})$ with $\mathrm{SINR} = S / (I + N)$.
-    \item QoS may be expressed as $\mathbb{P}(C \ge C_{\min})$ being sufficiently high.
-    \item With higher channel capacity, fewer resources are required; PRB mapping can be added later.
-    \item Erlang-style traffic models may be relevant for network blocking and load.
-    \item \textbf{Latency}: max 300 ms.
-    \item \textbf{KPIs / QoS}: consider explicit resource allocation to users based on the above.
-\end{itemize}
-To preserve plug-and-play separation, v0.3 introduces a global simulator configuration passed from the orchestrator to
-the simulator only. Experiments, certificates, orchestration logic, and optimisers remain unchanged and consume only
-aggregated metrics. The simulator config is responsible for selecting and parameterising channel-quality models, demand
-generators, and allocation policies, and for defining the output throughput metric used by the experiment.
-Coverage and throughput functions must be configurable plugins so alternative definitions can be swapped without
-changing experiment or certificate code.
-\begin{itemize}
-    \item \textbf{v0.3.1}: define and validate the adapter boundary and simulator config contract.
-    \item \textbf{v0.3.2}: introduce lognormal SINR channel-quality modelling and add simulator-level tests.
-    \item \textbf{v0.3.3}: add an end-to-end coverage + throughput dimensioning test.
-\end{itemize}
-
-\subsubsection{v0.3.1: Adapter Boundary and Config Contract}
-The adapter boundary formalises how the orchestrator interacts with a simulator backend.
-\begin{itemize}
-    \item \textbf{Orchestrator input}: a validated \texttt{SimulationConfig} object (serialisable to JSON/YAML) that
-    selects plugin implementations and provides their parameters.
-    \item \textbf{Simulator input}: backend-specific configuration derived from \texttt{SimulationConfig}
-    (e.g., config files, CLI flags, or API payloads).
-    \item \textbf{Simulator output}: a metrics dictionary with keys required by the experiment (e.g., \texttt{coverage},
-    later \texttt{throughput}).
-    \item \textbf{Determinism}: all per-trial randomness must be controlled by a trial seed supplied by the orchestrator,
-    ensuring repeatable trials for certification.
-    \item \textbf{Errors}: adapter must surface clear, typed errors for configuration validation, execution failures, and
-    output parsing issues.
-\end{itemize}
-
-\subsubsection{v0.3.2: Lognormal SINR Channel Quality}
-v0.3.2 introduces a minimal, standard channel-quality model while keeping the math tractable.
-\begin{itemize}
-    \item \textbf{Channel quality definition}: per-link SINR with $10 \log_{10}(\mathrm{SINR})
-    \sim \mathcal{N}(\mu_{\mathrm{dB}}, \sigma_{\mathrm{dB}}^2)$, i.i.d. across links.
-    \item \textbf{dB convention}: SINR is a linear power ratio; its dB form is
-    $\mathrm{SINR}_{\mathrm{dB}} = 10 \log_{10}(\mathrm{SINR})$ with $10 \log_{10}(P_2 / P_1)$ for power ratios.
-    \item \textbf{Config}: add a channel-quality block to \texttt{SimulationConfig} with parameters
-    $\mu_{\mathrm{dB}}$, $\sigma_{\mathrm{dB}}$, bandwidth $W$, and a throughput aggregation rule.
-    \item \textbf{Throughput mapping}: default throughput uses $C = W \log(1 + \mathrm{SINR})$ on the
-    selected link per user (e.g., best visible SINR), with the aggregation rule configurable.
-    The default aggregation is mean throughput across users (not a percentile such as p10).
-    \item \textbf{Experiment and certificate}: add a throughput-aware Bernoulli experiment that
-    declares success when both coverage and throughput constraints are met, certified with the
-    existing Bernoulli confidence bounds.
-    \item \textbf{Scope}: no PRB modelling or spatial correlation in v0.3.2; those remain optional extensions.
-\end{itemize}
-
-\subsubsection{v0.3.3: Throughput-Aware Dimensioning}
-v0.3.3 integrates throughput into the dimensioning loop and certification workflow.
-\begin{itemize}
-    \item \textbf{End-to-end dimensioning}: run the search loop with the throughput-aware QoS experiment
-    and Bernoulli certificate, returning the minimum design that satisfies both coverage and throughput targets.
-    \item \textbf{Targets}: define $C_{\min}$ and $R_{\min}$ per run; certify feasibility using existing confidence
-    bounds (no new certificate type required).
-    \item \textbf{Outputs}: report the certified design and include coverage and throughput metrics used for acceptance.
+    \item \textbf{Satellite PRB grid}: each satellite exposes a fixed PRB budget per time step.
+    \item \textbf{PRB demand}: map per-link SINR and user throughput demand to required PRBs via a simple capacity rule.
+    \item \textbf{Allocation policy}: scheduler assigns PRBs to users (policy is a simulator plugin).
+    \item \textbf{Throughput metric}: throughput is derived from allocated PRBs, not just SINR capacity.
+    \item \textbf{Constraints}: QoS still requires both coverage and throughput targets to be met.
 \end{itemize}
 
 \subsection{Ideas (Future versions)}
@@ -215,6 +148,85 @@ v0.3.3 integrates throughput into the dimensioning loop and certification workfl
 % Explain how additional funding or partnerships would reduce remaining risks.
 
 \appendix
+\section{Appendix: v0.3 Delivered Product Specification}
+
+\subsection{v0.3: QoS and Channel Quality}
+QoS is defined by two minimum constraints that must both be met:
+\begin{itemize}
+    \item \textbf{Coverage}: at least $C_{\min}$ fraction of users in the latitude band are served (exact definition of
+    ``served'' to be specified by the simulator model).
+    \item \textbf{Throughput}: at least $R_{\min}$ throughput is delivered (exact definition to be specified; expected to be
+    driven by a simple SINR-based capacity model).
+\end{itemize}
+
+\subsubsection{Discussion: Signal Quality and QoS Considerations}
+\begin{itemize}
+    \item Channel quality is defined as SINR with a lognormal model:
+    $10 \log_{10}(\mathrm{SINR}) \sim \mathcal{N}(\mu_{\mathrm{dB}}, \sigma_{\mathrm{dB}}^2)$, i.i.d. per link.
+    \item Signal quality may degrade with Doppler and path length; these are known if the ephemeris is known.
+    \item Angular velocity adds Doppler shift which degrades signal
+    \item Channel capacity model: $C = W \log(1 + \mathrm{SINR})$ with $\mathrm{SINR} = S / (I + N)$.
+    \item QoS may be expressed as $\mathbb{P}(C \ge C_{\min})$ being sufficiently high.
+    \item With higher channel capacity, fewer resources are required; PRB mapping can be added later.
+    \item Erlang-style traffic models may be relevant for network blocking and load.
+    \item \textbf{Latency}: max 300 ms.
+    \item \textbf{KPIs / QoS}: consider explicit resource allocation to users based on the above.
+\end{itemize}
+To preserve plug-and-play separation, v0.3 introduced a global simulator configuration passed from the orchestrator to
+the simulator only. Experiments, certificates, orchestration logic, and optimisers remain unchanged and consume only
+aggregated metrics. The simulator config is responsible for selecting and parameterising channel-quality models, demand
+generators, and allocation policies, and for defining the output throughput metric used by the experiment.
+Coverage and throughput functions must be configurable plugins so alternative definitions can be swapped without
+changing experiment or certificate code.
+\begin{itemize}
+    \item \textbf{v0.3.1}: define and validate the adapter boundary and simulator config contract.
+    \item \textbf{v0.3.2}: introduce lognormal SINR channel-quality modelling and add simulator-level tests.
+    \item \textbf{v0.3.3}: add an end-to-end coverage + throughput dimensioning test.
+\end{itemize}
+
+\subsubsection{v0.3.1: Adapter Boundary and Config Contract}
+The adapter boundary formalises how the orchestrator interacts with a simulator backend.
+\begin{itemize}
+    \item \textbf{Orchestrator input}: a validated \texttt{SimulationConfig} object (serialisable to JSON/YAML) that
+    selects plugin implementations and provides their parameters.
+    \item \textbf{Simulator input}: backend-specific configuration derived from \texttt{SimulationConfig}
+    (e.g., config files, CLI flags, or API payloads).
+    \item \textbf{Simulator output}: a metrics dictionary with keys required by the experiment (e.g., \texttt{coverage},
+    later \texttt{throughput}).
+    \item \textbf{Determinism}: all per-trial randomness must be controlled by a trial seed supplied by the orchestrator,
+    ensuring repeatable trials for certification.
+    \item \textbf{Errors}: adapter must surface clear, typed errors for configuration validation, execution failures, and
+    output parsing issues.
+\end{itemize}
+
+\subsubsection{v0.3.2: Lognormal SINR Channel Quality}
+v0.3.2 introduced a minimal, standard channel-quality model while keeping the math tractable.
+\begin{itemize}
+    \item \textbf{Channel quality definition}: per-link SINR with $10 \log_{10}(\mathrm{SINR})
+    \sim \mathcal{N}(\mu_{\mathrm{dB}}, \sigma_{\mathrm{dB}}^2)$, i.i.d. across links.
+    \item \textbf{dB convention}: SINR is a linear power ratio; its dB form is
+    $\mathrm{SINR}_{\mathrm{dB}} = 10 \log_{10}(\mathrm{SINR})$ with $10 \log_{10}(P_2 / P_1)$ for power ratios.
+    \item \textbf{Config}: add a channel-quality block to \texttt{SimulationConfig} with parameters
+    $\mu_{\mathrm{dB}}$, $\sigma_{\mathrm{dB}}$, bandwidth $W$, and a throughput aggregation rule.
+    \item \textbf{Throughput mapping}: default throughput uses $C = W \log(1 + \mathrm{SINR})$ on the
+    selected link per user (e.g., best visible SINR), with the aggregation rule configurable.
+    The default aggregation is mean throughput across users (not a percentile such as p10).
+    \item \textbf{Experiment and certificate}: add a throughput-aware Bernoulli experiment that
+    declares success when both coverage and throughput constraints are met, certified with the
+    existing Bernoulli confidence bounds.
+    \item \textbf{Scope}: no PRB modelling or spatial correlation in v0.3.2; those remain optional extensions.
+\end{itemize}
+
+\subsubsection{v0.3.3: Throughput-Aware Dimensioning}
+v0.3.3 integrates throughput into the dimensioning loop and certification workflow.
+\begin{itemize}
+    \item \textbf{End-to-end dimensioning}: run the search loop with the throughput-aware QoS experiment
+    and Bernoulli certificate, returning the minimum design that satisfies both coverage and throughput targets.
+    \item \textbf{Targets}: define $C_{\min}$ and $R_{\min}$ per run; certify feasibility using existing confidence
+    bounds (no new certificate type required).
+    \item \textbf{Outputs}: report the certified design and include coverage and throughput metrics used for acceptance.
+\end{itemize}
+
 \section{Appendix: v0.2 Delivered Product Specification}
 \subsection{Purpose}
 Provide a dimensioning decision for a LEO satellite operator: the minimum number of satellites required to meet
@@ -280,6 +292,8 @@ declaring the design feasible if $\mathrm{LCB}(p) \ge p_{\mathrm{target}}$.
 \subsection{Implementation Notes}
 v0.2 was achieved by updating the simulation layer only (3D spherical PPP coverage with horizon and off-nadir gating).
 Experiment semantics, certificates, orchestration, and optimisation layers were reused without modification.
+\newline\textbf{Poisson sampling}: implementations must use a numerically stable Poisson sampler for large intensities
+(e.g., NumPy's \texttt{poisson}) to avoid underflow and saturation in high-$\lambda$ regimes.
 
 
 \section{Appendix: v0.1 Delivered Product Summary}

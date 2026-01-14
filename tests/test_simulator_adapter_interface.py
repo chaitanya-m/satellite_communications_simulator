@@ -37,3 +37,6 @@ def test_local_ppp_adapter_deterministic_trial():
     assert metrics_a == metrics_b
     assert "coverage" in metrics_a
     assert "throughput" in metrics_a
+    assert "outage_rate" in metrics_a
+    # Outage is defined as one minus coverage under the default semantics.
+    assert metrics_a["outage_rate"] == 1.0 - metrics_a["coverage"]

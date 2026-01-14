@@ -50,7 +50,11 @@ class LocalPPPSimulatorAdapter(SimulatorAdapter):
             throughput_aggregation=cfg.channel_quality.throughput_aggregation,
             rng=rng,
         )
-        return sim.evaluate(lambda_sats=float(design))
+        metrics = sim.evaluate(lambda_sats=float(design))
+        if "outage_rate" not in metrics:
+            # Default outage definition uses coverage-only serving semantics.
+            metrics["outage_rate"] = 1.0 - float(metrics["coverage"])
+        return metrics
 
     def describe(self) -> Dict[str, str]:
         return {

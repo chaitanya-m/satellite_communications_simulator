@@ -75,25 +75,8 @@ class ClopperPearsonCertificate(FeasibilityCertificate):
         a = successes
         b = trials - successes + 1
 
-        try:
-            from scipy.stats import beta
-            return float(beta.ppf(self.alpha, a, b))
-        except Exception:
-            import mpmath as mp
-
-            target = mp.mpf(self.alpha)
-
-            def I(x):
-                return mp.betainc(a, b, 0, x, regularized=True)
-
-            lo, hi = mp.mpf("0.0"), mp.mpf("1.0")
-            for _ in range(80):
-                mid = (lo + hi) / 2
-                if I(mid) < target:
-                    lo = mid
-                else:
-                    hi = mid
-            return float((lo + hi) / 2)
+        from scipy.stats import beta
+        return float(beta.ppf(self.alpha, a, b))
 
 
 class HoeffdingCertificate(FeasibilityCertificate):

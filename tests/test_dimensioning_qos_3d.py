@@ -91,7 +91,7 @@ def _run_qos_search() -> dict[str, int | None]:
     threshold = 1.0 - delta
 
     ground_lambda = 500.0
-    max_designs = 100000
+    max_designs = 10000
     evals_per_design = 100
     seed = 1000
 

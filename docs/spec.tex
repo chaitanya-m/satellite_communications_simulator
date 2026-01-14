@@ -98,14 +98,27 @@ and the implications for future development and industrialization.
 \section{Product Specification}
 Delivered product specifications (v0.2 and v0.3) are documented in the appendix.
 
-\subsection{Planned v0.4: PRB Capacity and Allocation}
-v0.4 introduces explicit PRB modelling while keeping the rest of the architecture unchanged.
+\subsection{Planned v0.4: Outage Experiment and Test Harness}
+v0.4 sets up the outage experiment and test harness without changing simulator behaviour.
 \begin{itemize}
-    \item \textbf{Satellite PRB grid}: each satellite exposes a fixed PRB budget per time step.
-    \item \textbf{PRB demand}: map per-link SINR and user throughput demand to required PRBs via a simple capacity rule.
-    \item \textbf{Allocation policy}: scheduler assigns PRBs to users (policy is a simulator plugin).
-    \item \textbf{Throughput metric}: throughput is derived from allocated PRBs, not just SINR capacity.
-    \item \textbf{Constraints}: QoS still requires both coverage and throughput targets to be met.
+    \item \textbf{Outage definition}: for a trial with user set $\mathcal{U}$ and per-user service indicators
+    $S_i \in \{0,1\}$, define outage rate as
+    $o = 1 - \frac{1}{|\mathcal{U}|} \sum_{i \in \mathcal{U}} S_i$.
+    The simulator defines $S_i$ (default: user is visible and throughput $\ge R_{\min}$).
+    \item \textbf{Bernoulli experiment}: define the success event $A=1$ iff $o \le o_{\max}$.
+    For a design $d$, estimate $p = \mathbb{P}(A=1)$ and certify feasibility when
+    $\mathrm{LCB}(p) \ge p_{\mathrm{target}}$ using existing Bernoulli certificates.
+    \item \textbf{Trial validity}: ignore trials with $|\mathcal{U}|=0$ (no ground demand).
+    \item \textbf{Simulator contract}: require \texttt{outage\_rate} and \texttt{n\_ground} metrics
+    from the adapter, even before PRBs are implemented.
+\end{itemize}
+
+\subsection{Planned v0.5: PRB Capacity and Outage Results}
+v0.5 is split into subversions to manage PRB complexity while producing outage results.
+\begin{itemize}
+    \item \textbf{v0.5.1}: add the satellite PRB grid and PRB demand mapping, leaving allocation policy minimal.
+    \item \textbf{v0.5.2}: introduce a configurable scheduler and derive throughput from allocated PRBs.
+    \item \textbf{v0.5.3}: compute outage from SINR and PRB availability and report certified dimensioning outputs.
 \end{itemize}
 
 \subsection{Ideas (Future versions)}
@@ -117,6 +130,12 @@ v0.4 introduces explicit PRB modelling while keeping the rest of the architectur
     \item Priors for user distribution and mobility (e.g., moving users such as trains and planes).
     \item beta ginibre for better modelling of satellites (exponential falloff of finding a satellite nearby), 
     \item determinental for ground dtation modelling (clusters of users)
+    
+    \item rq: (simple) outage probability for sphere 
+    \item rq: (a-star) use of beamforming for obstacle mitigation
+    \item rq: use of stochastic geometry for interference modelling
+
+    \item dimensioning is resource allocation, planning is optimization of a single system parameter. may be done iteratively, e.g. when param opt fails for a given dimensioning, then redeimension
 \end{itemize}
 
 
@@ -308,8 +327,6 @@ declared success if coverage met a target. The certificate reported a lower conf
 probability based on multiple seeded simulations, and the solution was the minimum Poisson mean whose bound met the target confidence level.
 
 Throughput modelling via PRB capacity, detailed physical layer / link budgets, and full network routing were not part of v0.1 scope.
-
-
 
 
 \section*{Acknowledgments}

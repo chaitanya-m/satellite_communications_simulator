@@ -12,8 +12,10 @@ class MinLambdaForOutage(BernoulliExperiment):
     """
     Outage experiment for dimensioning.
 
-    The design parameter is a single scalar (e.g. lambda). A trial is a
-    success when the observed outage rate is at or below the target.
+    The design parameter is a single scalar supplied by the caller.
+    In this repo it is typically the satellite Poisson mean (lambda),
+    passed through the experiment loop rather than stored here. A trial
+    succeeds when the observed outage rate is at or below the target.
     """
 
     def __init__(

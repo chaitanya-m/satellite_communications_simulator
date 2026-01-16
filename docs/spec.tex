@@ -98,8 +98,34 @@ and the implications for future development and industrialization.
 \section{Product Specification}
 Delivered product specifications (v0.2 and v0.3) are documented in the appendix.
 
-\subsection{Planned v0.4: Outage Experiment and Test Harness}
-v0.4 sets up the outage experiment and test harness without changing simulator behaviour.
+\subsection{Planned v0.4.1: Corrected Radio Model}
+v0.4.1 replaces the i.i.d. SINR abstraction with a received-power model aligned with
+\cite{gomez2018stochastic}.
+\begin{itemize}
+    \item \textbf{Received power}: for user at $x$ and satellite at $y$,
+    $P(x,y)=P_t G_{xy}\|x-y\|^{-\gamma}$, where $\gamma$ is the path-loss exponent and
+    $G_{xy}\sim \mathrm{Exp}(1)$ models Rayleigh fading.
+    \item \textbf{Serving satellite}: $y_0=\arg\max_y P(x,y)$ among visible satellites.
+    \item \textbf{SIR}: $\mathrm{SIR}(x)=\frac{P(x,y_0)}{\sum_{y\in \Phi_b} P(x,y)-P(x,y_0)}$.
+    \item \textbf{SINR}: $\mathrm{SINR}(x)=\frac{P(x,y_0)}{\sum_{y\in \Phi_b} P(x,y)-P(x,y_0)+N_0 W}$.
+    \item \textbf{Capacity}: $C=W\log_2(1+\mathrm{SINR})$ drives throughput metrics.
+\end{itemize}
+Definitions: $P_t$ is per-satellite transmit power (W); $G_{xy}$ is a unitless small-scale
+fading power gain for the link $x\leftrightarrow y$ (fast fading from multipath, modelled as
+exponential with mean 1 under Rayleigh fading; power exceeds its mean about 37\% of the time);
+$\|x-y\|$ is link distance (m) measured in 3D;
+$\gamma$ is the path-loss exponent; $\Phi_b$ is the set of visible satellites for user $x$;
+$y_0=\arg\max_y P(x,y)$ means the user associates to the visible satellite with the highest
+instantaneous received power (strongest link, with ties broken arbitrarily); $N_0$ is noise
+spectral density (W/Hz); $W$ is link bandwidth (Hz). SIR ignores noise, SINR includes noise.
+
+In this model the fast multipath fluctuations are captured by a random “fading power gain” ($G_{xy}$) 
+that multiplies received power, and under Rayleigh fading ($G_{xy}\sim \mathrm{Exp}(1)$) 
+(an exponential with mean 1), so the link power randomly rises above or below its average due to 
+constructive/destructive interference.
+
+\subsection{Planned v0.4.2: Outage Experiment and Test Harness}
+v0.4.2 sets up the outage experiment and test harness without changing simulator behaviour.
 \begin{itemize}
     \item \textbf{Outage definition}: for a trial with user set $\mathcal{U}$ and per-user service indicators
     $S_i \in \{0,1\}$, define outage rate as
@@ -167,7 +193,7 @@ v0.5 is split into subversions to manage PRB complexity while producing outage r
 % Explain how additional funding or partnerships would reduce remaining risks.
 
 \appendix
-\section{Appendix: v0.3 Delivered Product Specification}
+\section{Appendix: Delivered Product Specifications}
 
 \subsection{v0.3: QoS and Channel Quality}
 QoS is defined by two minimum constraints that must both be met:
@@ -246,27 +272,27 @@ v0.3.3 integrates throughput into the dimensioning loop and certification workfl
     \item \textbf{Outputs}: report the certified design and include coverage and throughput metrics used for acceptance.
 \end{itemize}
 
-\section{Appendix: v0.2 Delivered Product Specification}
-\subsection{Purpose}
+\subsection{v0.2 Delivered Product Specification}
+\subsubsection{Purpose}
 Provide a dimensioning decision for a LEO satellite operator: the minimum number of satellites required to meet
 operator-defined coverage targets, under priors on user demand and satellite distributions.
 
-\subsection{Users}
+\subsubsection{Users}
 Day-to-day users are LEO satellite operators who own and operate satellite constellations.
 
-\subsection{Decision and Optimisation Target}
+\subsubsection{Decision and Optimisation Target}
 The product outputs a recommended minimum constellation size $N$ such that coverage targets are satisfied with high
 probability. The optimisation objective is coverage feasibility (not cost, routing, or detailed PHY performance).
 The design variable is the satellite Poisson mean (intensity), reported as the recommended $N$.
 
-\subsection{Geographic Usage Zones}
+\subsubsection{Geographic Usage Zones}
 The operator specifies a single latitude band:
 $$
 [\mathrm{lat}_{\min}, \mathrm{lat}_{\max}], \quad \mathrm{lat}_{\min} \le \mathrm{lat}_{\max}.
 $$
 Users are drawn only from within this band on a spherical Earth model.
 
-\subsection{Modelling Assumptions}
+\subsubsection{Modelling Assumptions}
 \begin{itemize}
     \item \textbf{Users}: sampled as a Poisson point process (PPP) on the spherical Earth surface, restricted to the latitude
     band.
@@ -277,7 +303,7 @@ Users are drawn only from within this band on a spherical Earth model.
     with an explicit horizon gate to exclude satellites below line of sight.
 \end{itemize}
 
-\subsection{Inputs}
+\subsubsection{Inputs}
 \begin{itemize}
     \item Latitude band $[\mathrm{lat}_{\min}, \mathrm{lat}_{\max}]$.
     \item Poisson mean (intensity) for the ground user distribution (input prior).
@@ -287,20 +313,20 @@ Users are drawn only from within this band on a spherical Earth model.
     \item Certification parameters: confidence level $1-\alpha$ and feasibility target $p_{\mathrm{target}}$.
 \end{itemize}
 
-\subsection{Outputs}
+\subsubsection{Outputs}
 \begin{itemize}
     \item Recommended minimum constellation size $N$.
     \item Certificate: a confidence-backed lower bound on $\mathbb{P}(\text{coverage target met})$ under the stated priors.
     \item Reproducibility artifact: simulator configuration and seeds sufficient to replay the certification run.
 \end{itemize}
 
-\subsection{Statistical Certification}
+\subsubsection{Statistical Certification}
 Define a Bernoulli per-trial success event $A$ where $A=1$ iff the coverage target is met in that trial.
 Let $p := \mathbb{P}(A=1)$ under the stated priors and simulator configuration.
 The product certifies feasibility by returning, with confidence $1-\alpha$, a lower confidence bound $\mathrm{LCB}(p)$ and
 declaring the design feasible if $\mathrm{LCB}(p) \ge p_{\mathrm{target}}$.
 
-\subsection{Scope and Non-Goals}
+\subsubsection{Scope and Non-Goals}
 \begin{itemize}
     \item \textbf{In scope}: Poisson-based coverage dimensioning on a 3D spherical Earth model with certification and
     closed-form assumptions.
@@ -308,14 +334,14 @@ declaring the design feasible if $\mathrm{LCB}(p) \ge p_{\mathrm{target}}$.
     planes; detailed PHY/link-budget simulation; full network routing; end-to-end application performance.
 \end{itemize}
 
-\subsection{Implementation Notes}
+\subsubsection{Implementation Notes}
 v0.2 was achieved by updating the simulation layer only (3D spherical PPP coverage with horizon and off-nadir gating).
 Experiment semantics, certificates, orchestration, and optimisation layers were reused without modification.
 \newline\textbf{Poisson sampling}: implementations must use a numerically stable Poisson sampler for large intensities
 (e.g., NumPy's \texttt{poisson}) to avoid underflow and saturation in high-$\lambda$ regimes.
 
 
-\section{Appendix: v0.1 Delivered Product Summary}
+\subsection{v0.1 Delivered Product Summary}
 Version 0.1 delivered a certified dimensioning capability for LEO operators focused on coverage feasibility under
 stochastic user and satellite distributions. The product produced a minimum constellation size $N$ satisfying coverage
 constraints with statistical certification, using a simplified world simulator and Monte Carlo trials. While a 2D circular world
@@ -332,7 +358,11 @@ Throughput modelling via PRB capacity, detailed physical layer / link budgets, a
 \section*{Acknowledgments}
 % Optional. Acknowledge funding support and collaborators.
 
-\bibliographystyle{plain}
-\bibliography{references}
+\begin{thebibliography}{9}
+\bibitem{gomez2018stochastic}
+Jean-Sébastien Gomez.
+\textit{Stochastic models for cellular networks planning and performance assessment}.
+PhD thesis, Télécom ParisTech (EDITE), 2018.
+\end{thebibliography}
 
 \end{document}

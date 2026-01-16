@@ -1,3 +1,5 @@
+# Kalman Filters
+
 ## Problem (single satellite, one object)
 
 We want to learn the true satellite position from repeated, noisy position observations.
@@ -151,3 +153,16 @@ $x$ and uses this Jacobian to propagate uncertainty. For the observation update,
 $h(x)$ and uses it in the same Kalman update equations. The variance (covariance) updates are modified accordingly using these Jacobians.
 
 Despite these changes, the underlying idea is unchanged: observations with high uncertainty contribute weakly to the update, while low-uncertainty observations contribute strongly.
+
+# Poisson
+
+An even arrival distribution that aims to model probability of a single event arrival as proportional to interval length $t$. As the time interval $t$ goes to 0, probability mass over the natural numbers for the distribution concentrates on 0 (no events at all). The distributions over time intervals are combined in a straightforward additive way.
+
+# Optimal Transport 
+
+The point map determines how mass moves, and the push‑forward is just the induced measure after that mass relocation. Mass is preserved during the move by construction via the push-forward constraint. The move doesn't have to be a bijection, it may be many-one. For instance, start with a uniform distribution over [0,1]. Move half the mass to [0,0.5]. Move the other half to [1]. This is obviously a many-one point mapping. The mass associated with the points (0.5,1] all goes to [1] - so the induced push-forward measure preserves mass.
+
+
+Finding a mapping that optimises some cost function while inducing the push-forward is a difficult problem - which bit of mass goes where? Further, we may wish to model resource distribution as one-many.
+
+Kantorovich optimises over a joint measure π on X×Y with marginals μ, ν, allowing mass‑splitting - using pairs means one-many is elegantly solved.

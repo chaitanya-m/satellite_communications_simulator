@@ -1,0 +1,561 @@
+% This file is meant to be included from `docs/spec.tex` (as an appendix) via `\input{study}`.
+% It intentionally contains no `\documentclass`, no preamble, and no `\begin{document}`.
+
+\section{Scope}
+We treat \textbf{planning} as the strategic placement and configuration of available
+infrastructure under constraints such as interference, and \textbf{dimensioning} as the
+minimum resource sizing required to satisfy per-user QoS targets under stochastic
+load and resource outages.
+Our three core problems of interest are interference, per-user QoS/outage, and route existence.
+
+\section{Common Model Assumptions}
+\begin{itemize}
+    \item \textbf{Users} form a spatial point process on the Earth surface, within
+    a latitude band.
+    \item \textbf{Satellites} form a spatial point process on an orbital shell,
+    gated by visibility.
+    \item \textbf{Radio model} uses a received-power formulation
+    $P(x,y)=P_t G_{xy}\|x-y\|^{-\gamma}$ with Rayleigh fading
+    $G_{xy}\sim \mathrm{Exp}(1)$ and SINR-based capacity $C=\mathcal{W}\log_2(1+\mathrm{SINR})$.
+    This follows standard stochastic-geometry modeling conventions \cite{gomez2018stochastic}.
+\end{itemize}
+
+Definitions: $P_t$ is per-satellite transmit power (W); $G_{xy}$ is a unitless
+small-scale fading power gain for the link $x\leftrightarrow y$; $\|x-y\|$ is
+3D link distance (m); $\gamma$ is the path-loss exponent; $\mathcal{W}$ is bandwidth (Hz);
+$\mathrm{SINR}=S/(I+N)$ with $S$ the received signal power, $I$ aggregate
+interference, and $N=N_0\mathcal{W}$ the noise power with $N_0$ noise spectral density (W/Hz).
+
+\section{Planning: Interference as the Primary Objective}
+We view planning as choosing configuration variables (e.g., satellite density,
+altitude, power, bandwidth, and visibility constraints) so that variables of interest are
+controlled (primarily intereference) while maintaining acceptable service quality.
+\begin{itemize}
+    \item \textbf{Interference metric}: for user at $x$ with serving satellite
+    $y_0$, define $I(x)=\sum_{y\in \Phi_b\setminus\{y_0\}} P(x,y)$, that is, the aggregate power
+    received from all visible satellites except the serving one.
+    \item \textbf{Planning target}: enforce a region-level constraint such as
+    $\mathbb{P}(\mathrm{SIR}(x)\ge\beta)\ge p_{\mathrm{sir}}$ or
+    $\mathbb{E}[I(x)]\le I_{\max}$ for users in the band.
+    \item \textbf{Equilibrium framing}: treat operators or satellites as agents
+    whose actions affect aggregate interference, then study equilibria under
+    congestion penalties.
+\end{itemize}
+
+\section{Dimensioning: Per-User QoS Under Network Outage}
+Dimensioning seeks the minimum satellite intensity $N$ such that per-user QoS
+targets are met with high confidence, even when the network is resource-limited.
+\begin{itemize}
+    \item \textbf{Per-user outage}: $O_i=1$ if a user is unserved or if
+    throughput $C_i < R_{\min}$; otherwise $O_i=0$.
+    \item \textbf{Outage rate}: $o = \frac{1}{|\mathcal{U}|}\sum_{i\in\mathcal{U}} O_i$.
+    \item \textbf{Dimensioning target}: find the smallest $N$ such that
+    $\mathbb{P}(o \le o_{\max}) \ge p_{\mathrm{target}}$ under the stated priors.
+\end{itemize}
+
+\section{Routing: Route Existence Under Time-Varying Connectivity}
+We study whether an end-to-end route exists between endpoints given a time-varying visibility/connectivity graph
+(ground--satellite and inter-satellite links), reporting $\mathbb{P}(\text{route exists})$ (or a certified lower bound).
+
+\section{Planned Experiments}
+\begin{itemize}
+    \item Vary satellite intensity and compute interference distributions for
+    latitude bands to identify feasible planning regimes.
+    \item Measure per-user outage and certify feasibility over Monte Carlo trials,
+    reporting the minimum $N$ that meets $(o_{\max}, p_{\mathrm{target}})$.
+    \item Measure route existence (as a graph-connectivity event) under representative visibility/connectivity snapshots.
+\end{itemize}
+
+
+
+\section{Theoretical Structure}
+
+\subsection{Topological and Metric Spaces}
+
+\paragraph{Motivation.}
+Many sets we work with in applications (such as subsets of $\mathbb{R}^d$) come with a natural notion of
+``closeness'' and ``continuity''. This structure is what lets us talk about open sets, continuous costs, and Borel sets,
+which in turn are the standard measurable sets used for probability measures.
+
+\paragraph{Intuition.}
+A \emph{topology} tells us which subsets of a set should be considered ``open'', generalising open intervals in
+$\mathbb{R}$ and open balls in $\mathbb{R}^d$. A \emph{metric} is a concrete way to specify closeness by giving distances.
+Compactness is a finiteness condition (no ``escape to infinity'') that makes many existence arguments behave well.
+
+\paragraph{Definition.}
+A \textbf{topological space} is a pair $(X,\tau)$ where $\tau\subseteq 2^X$ is a collection of subsets of $X$ (called
+\emph{open sets}) such that:
+$$
+\emptyset\in\tau,\quad X\in\tau,\quad
+\bigcup_{i\in I} U_i \in\tau\ \text{for any family }(U_i)_{i\in I}\subseteq\tau,\quad
+U\cap V\in\tau\ \text{for all }U,V\in\tau.
+$$
+
+A \textbf{metric space} is a pair $(X,d)$ where $d:X\times X\to[0,\infty)$ satisfies (i) $d(x,y)=0\Leftrightarrow x=y$,
+(ii) symmetry, and (iii) the triangle inequality. Every metric $d$ induces a topology by taking open sets to be unions of
+open balls $B_r(x)=\{z\in X:d(z,x)<r\}$.
+
+A metric space $(X,d)$ is \textbf{compact} if every open cover of $X$ has a finite subcover (equivalently in metric
+spaces, every sequence has a convergent subsequence). A \textbf{compact metric space} is a metric space that is compact.
+
+\paragraph{Example.}
+$X=[0,1]\subset\mathbb{R}$ with the usual distance $d(x,y)=|x-y|$ is a compact metric space.
+More generally, every closed and bounded subset of $\mathbb{R}^d$ with the Euclidean distance is compact.
+
+\subsection{Measurability}
+
+\paragraph{Motivation.}
+We wish to make quantitative statements (such as probabilities of events). In order to do so, we
+must ensure that the sets we are making statements about are measurable, that is, we must ensure that 
+a simple real number can be assigned to their subsets in a consistent manner that correctly reflects their 
+relative sizes (masses). For example, we wish to talk about probabilities of events such as 
+``signal to noise and interference is below threshold with probability''.
+
+\paragraph{Intuition.}
+How do we create a framework that allows us to measure subsets of a set (e.g. events in the case of probability)? 
+
+\paragraph{Definition.}
+A \textbf{measurable space} is a pair $(X,\mathcal{F})$ where $X$ is a set and $\mathcal{F}$ is a collection of subsets
+of $X$ (called ``events'') on which we will be allowed to assign sizes.
+A \textbf{measure} on $(X,\mathcal{F})$ is a function $\mu:\mathcal{F}\to[0,\infty]$ such that $\mu(\emptyset)=0$ and
+for any pairwise disjoint sets $A_1,A_2,\dots \in \mathcal{F}$,
+$$
+\mu\!\left(\bigcup_{n=1}^\infty A_n\right)=\sum_{n=1}^\infty \mu(A_n).
+$$
+A \textbf{probability measure} is a measure with $\mu(X)=1$.
+
+\paragraph{Example.}
+If $X=\{1,2,\dots,n\}$ is finite, a natural choice is $\mathcal{F}=2^X$ (all subsets), and the uniform probability
+measure $\mu(A)=|A|/n$. Then $\mu(A)$ is the probability of the event ``the outcome lies in $A$''.
+
+\subsection{$\sigma$-algebras}
+
+\paragraph{Motivation.}
+In probability, we want to manipulate events using the usual set operations: we negate events, take unions of events,
+and take limits of event sequences. The collection of ``allowed'' events should therefore be closed under these
+operations, so that we do not leave the space of events when doing algebra.
+
+\paragraph{Intuition.}
+We do \emph{not} assume every subset of $X$ is measurable: we pick a structured family of subsets that is large enough
+for the geometric/physical events we care about, but stable under complements and countable unions.
+
+\paragraph{Definition.}
+This is done by equipping these sets (e.g. $X$ the set of all agent types, $Y$ the set of all actions) with a 
+$\sigma$-algebra $\mathcal{F}$, which is a collection of subsets defined in such a way that assigning a real number 
+to each subset in $\mathcal{F}$ is consistent with the usual rules of set operations (union, intersection, complement) 
+and countable limits. In other words, we may add, subtract, and take limits while preserving the consistency of our measure.
+
+A $\sigma$-algebra $\mathcal{F}$ on a set $X$ is a collection of subsets of $X$ such that
+$$
+X \in \mathcal{F}, \qquad
+A \in \mathcal{F} \Rightarrow X \setminus A \in \mathcal{F}, \qquad
+A_1,A_2,\dots \in \mathcal{F} \Rightarrow \bigcup_{n=1}^\infty A_n \in \mathcal{F}.
+$$
+These closure properties ensure that measures are consistent under negation and countable limits.
+
+\paragraph{Example.}
+When $X\subset \mathbb{R}^d$, we want
+to treat ``geometric'' subsets of $X$ as legitimate events, e.g. open balls, half-spaces,
+and threshold sets such as $\{x\in X : f(x)\le a\}$.
+
+We therefore take $\mathcal{F}=\mathcal{B}(X)$, the \textbf{Borel $\sigma$-algebra} on $X$,
+defined as the \emph{smallest} $\sigma$-algebra that contains all open subsets of $X$
+(equivalently, the $\sigma$-algebra generated by open balls).
+
+Open sets matter here because geometric events (``within radius $r$ of a point'', 
+``inside a coverage footprint'') are naturally described using open balls and their unions, 
+and we want those events to be measurable by default.
+
+\subsection{Measurable Functions}
+
+\paragraph{Motivation.}
+We have considered measuring sets (subsets viewed as events). We now consider measuring functions
+that represent physical quantities on $X$ (SINR, received power, interference, etc.), because many events
+are defined by thresholding such a function.
+
+\paragraph{Intuition.}
+Let $x$ be a random location drawn according to a probability measure $\mu$ on $X$
+(for example, $\mu$ could be the distribution of user locations in a latitude band).
+If $f:X\to\mathbb{R}$ is a physical quantity (such as SINR), then $f(x)$ is a random real number (a random variable).
+
+Terminology note: in this document, when we say ``distribution'' of $x$ we mean a \emph{probability measure}
+$\mu\in\mathcal{P}(X)$, so $\mu(X)=1$. (More general, non-normalised measures also appear in modeling---for example,
+Poisson point process \emph{intensity} measures---but probabilities are always defined using a probability measure.)
+
+What we want to quantify are statements like ``subset of locations where the SINR is below the threshold $a$''.
+This statement corresponds to the event 
+$$
+\{x\in X : f(x)\le a\}.
+$$
+Its probability is the $\mu$-mass of that set:
+$$
+p = \mu(\{x\in X : f(x)\le a\}).
+$$
+
+\paragraph{Definition.}
+To ensure this definition is consistent (and to allow integrals like averages), we need the set
+$\{x\in X : f(x)\le a\}$ to be an element of $\mathcal{F}$ for every threshold $a$.
+This is exactly what it means for $f$ to be measurable.
+
+Formally, we equip the domain with a measurable space $(X,\mathcal{F})$ and the real line with
+its Borel $\sigma$-algebra $(\mathbb{R},\mathcal{B}(\mathbb{R}))$.
+A function $f:X\to\mathbb{R}$ is measurable if for every Borel set $A\in\mathcal{B}(\mathbb{R})$,
+the preimage $f^{-1}(A)\in\mathcal{F}$.
+In practice, it is enough to check threshold sets: $f$ is measurable if for every $a\in\mathbb{R}$,
+$$
+\{x\in X : f(x)\le a\}\in\mathcal{F}.
+$$
+
+\paragraph{Example.}
+Finally, measurability is what makes expectations meaningful: if $f$ is integrable,
+the average value of the physical quantity is $\int_X f(x)\,d\mu(x)$.
+When $\mathcal{F}=\mathcal{B}(X)$ and $f$ is continuous (as for most geometric/radio quantities),
+$f$ is automatically measurable.
+
+\subsection{Push-Forward Measures}
+\paragraph{Motivation.}
+The notion of a push-forward measure explains how a measure on $X$ (such as the distribution of locations)
+induces a corresponding measure on another space through a function. In our setting this ``other space'' is often
+$\mathbb{R}$ (e.g., the real-valued SINR), but the same construction applies to maps $X\to Y$ (as in optimal transport).
+
+\paragraph{Intuition.}
+Start with a random location $x\sim \mu$ on $X$. Apply a deterministic map $f$ to obtain a new value $y=f(x)$
+(for example a real-valued SINR, or a transported location in $Y$). Even though $f$ is deterministic, the output is
+random because the input $x$ is random; the push-forward is simply the distribution of $y$.
+
+\paragraph{Definition.}
+Formally, let $(X,\mathcal{F})$ and $(Y,\mathcal{G})$ be measurable spaces, let $\mu$ be a measure on $(X,\mathcal{F})$,
+and let $f:X\to Y$ be measurable. The \textbf{push-forward} (also called \textbf{image}) measure $f_{\#}\mu$ on
+$(Y,\mathcal{G})$ is defined by
+$$
+(f_{\#}\mu)(B) := \mu(f^{-1}(B)), \qquad B\in\mathcal{G}.
+$$
+If $\mu$ is a probability measure, then $f_{\#}\mu$ is again a probability measure.
+This says: the mass assigned to a set $B$ of outputs equals the mass of the set of inputs that map into $B$.
+
+\paragraph{Example.}
+In the common case $Y=\mathbb{R}$ with $\mathcal{G}=\mathcal{B}(\mathbb{R})$, letting $B=(-\infty,a]$ gives
+$$
+(f_{\#}\mu)((-\infty,a]) = \mu(\{x\in X : f(x)\le a\}),
+$$
+which is exactly the probability statement we use for threshold events.
+
+\subsubsection{Push-Forward in the Optimal Transport Problem}
+\paragraph{Motivation.}
+In optimal transport, we want to \emph{move mass} from a source distribution $\mu$ on a space $X$ (a ``pile'')
+to a target distribution $\nu$ on a space $Y$ (a ``hole''), while minimizing a cost (the objective).
+
+\paragraph{Intuition.}
+A transport map $T:X\to Y$ tells us where each location $x$ sends its mass. The requirement that ``the pile becomes
+the hole'' is exactly that transporting $\mu$ through $T$ yields the target distribution $\nu$.
+
+\paragraph{Definition.}
+We say that $T$ \emph{pushes $\mu$ forward to $\nu$} if
+$$
+T_{\#}\mu=\nu,
+$$
+meaning that for every measurable set $B\subseteq Y$,
+$$
+\nu(B)=\mu(T^{-1}(B)).
+$$
+This is exactly the push-forward definition from the previous subsection, with the specific map $f$ renamed to $T$
+(to emphasize that it is a transport map) and the codomain being $Y$ rather than $\mathbb{R}$.
+
+\textbf{Kantorovich formulation.} The Monge formulation above restricts us to a \emph{deterministic} assignment:
+each $x$ sends all its mass to a single point $T(x)$. This can be too restrictive (for example, if a point of $\mu$
+must supply multiple points in $\nu$) and it leads to a nonconvex optimization problem.
+
+The Kantorovich idea is to relax ``one destination per source point'' into a \emph{transport plan} that can split mass:
+instead of choosing a map $T$, we choose a joint measure $\gamma$ on $X\times Y$ whose mass at $(x,y)$ represents
+how much mass is transported from $x$ to $y$.
+
+In optimisation language, the \textbf{decision variable} (also called the \textbf{optimisation variable}) is the
+mathematical object we are free to choose in order to minimise the objective under constraints.
+In the Kantorovich formulation, the decision variable is the joint measure $\gamma$ on $X\times Y$.
+
+To represent a valid transport plan from $\mu$ to $\nu$, $\gamma$ should have marginals $\mu$ and $\nu$.
+Equivalently, the constraints that $\gamma$ has marginals equal to $\mu$ and $\nu$ can be written as push-forward relations
+$$
+(\pi_X)_{\#}\gamma=\mu,\qquad (\pi_Y)_{\#}\gamma=\nu,
+$$
+where $\pi_X(x,y)=x$ and $\pi_Y(x,y)=y$ are the coordinate projections.
+These are exactly push-forwards of the same form $T_{\#}(\cdot)$, with the ``map'' $T$ being instantiated as
+$T=\pi_X$ and $T=\pi_Y$, respectively.
+
+To make the origin and endpoint explicit: $\gamma$ is a measure on the \emph{product space} $X\times Y$.
+The map $\pi_X:X\times Y\to X$ takes a pair $(x,y)$ and returns its $X$-coordinate $x$, so $(\pi_X)_{\#}\gamma$
+is a measure \emph{on $X$}. Likewise, $\pi_Y:X\times Y\to Y$ returns the $Y$-coordinate, so $(\pi_Y)_{\#}\gamma$
+is a measure \emph{on $Y$}.
+
+\paragraph{Example.}
+Let $X=[0,1]$, $Y=[0,2]$, and let $\mu$ be the uniform distribution on $[0,1]$. Define $T(x)=2x$.
+Then $T_{\#}\mu$ is the uniform distribution on $[0,2]$ (the interval is stretched, so density halves), i.e.\ $\nu=T_{\#}\mu$.
+
+Kantorovich-only example (mass splitting). Let $X=\{0\}$ and $Y=\{-1,+1\}$. Let $\mu=\delta_0$ (all mass at $0$) and
+let $\nu=\tfrac12\delta_{-1}+\tfrac12\delta_{+1}$. There is no map $T:X\to Y$ such that $T_{\#}\mu=\nu$, because any map
+must send all mass to a single point in $Y$. But there is a transport plan $\gamma$ on $X\times Y$ defined by
+$$
+\gamma(0,-1)=\tfrac12,\qquad \gamma(0,+1)=\tfrac12,
+$$
+which satisfies $(\pi_X)_{\#}\gamma=\mu$ and $(\pi_Y)_{\#}\gamma=\nu$.
+
+\section{Optimal Transport and Cournot-Nash Equilibria}
+This section summarises the background and key ideas in \cite{blanchet2016optimal} in a format aligned with our study.
+
+We are interested in settings with many agents, each attempting to optimise for itself. What sorts of equilibria arise?
+What do these equilibria look like? When do they exist, and when are they unique?
+
+For example, consider a large number of users (agents) choosing which satellite (action) to connect to. 
+Each user's utility depends on which satellite it chooses, but also on how many other users choose the 
+same satellite (congestion externality). We wish to characterise the equilibria of this system, so we may 
+understand not only how users behave but also how to design the system (e.g., satellite parameters) to 
+achieve desirable outcomes.
+
+Each user is solving an individual optimisation problem, but the problems are coupled through the congestion effects.
+We need to characterise jointly the optimisation problem as well as the equilibrium conditions. It would not suffice 
+to simply solve each user's optimisation problem in isolation, or to show that an equilibrium exists. It is essential 
+to simultaneously characterise individual optimisation strategies and the resulting equilibrium.
+
+In game-theoretic terms, we are interested in \textbf{non-atomic games with externalities}, where each agent is infinitesimally
+small (non-atomic) and the cost incurred by each agent depends on the aggregate behaviour of all agents (externalities).
+
+\subsection{Problem Class, Background, and Gap}
+
+\cite{blanchet2016optimal} studies non-atomic games with externalities and gives classes of models where Cournot--Nash
+equilibria are not only shown to exist, but can also be characterised in a way that supports uniqueness results and
+computation. Their stated gap is that, while abstract existence results for Cournot--Nash equilibria are well known, they
+do not typically yield a tractable characterisation (or numerical scheme) for the equilibrium distribution.
+
+\paragraph{Where do externalities and congestion come from?}
+In many applications, an agent's cost depends on what \emph{others} do through an aggregate quantity. For instance, in a
+wireless association model, if many users choose the same satellite (or the same beam), then service quality degrades;
+in road choice, if many drivers choose the same road, travel time increases. These effects are called \emph{externalities}
+because an agent's cost depends on the aggregate behaviour of the population, not only on the agent's own action.
+The paper models such effects through an action distribution $\nu$ and an externality term $V[\nu](y)$ that modifies the
+cost of playing action $y$.
+
+However, once we introduce such externalities (especially congestion-type effects), there is a key technical
+obstruction: the dependence of costs on the population distribution can fail to have the regularity properties assumed
+by standard equilibrium existence proofs.
+
+\paragraph{What is the ``obstruction''?}
+Here, an \emph{obstruction} simply means a technical barrier that prevents us from applying the most common existence
+proof techniques ``out of the box''. Concretely, many existence proofs for equilibria rely on a fixed-point argument and
+therefore need a basic stability property: if the population action distribution $\nu$ changes a little, then the cost
+landscape faced by agents should also change a little. Without such stability, it becomes hard to even define a
+well-behaved ``best-response of the population'' map, let alone prove it has a fixed point.
+
+Congestion effects are often \emph{local}: the cost at action $y$ depends on how crowded that action is. A common model is
+$V[\nu](y)=f(\nu(y))$, where $\nu(y)$ denotes a density. The difficulty is that densities are fragile: two action
+distributions can look almost the same when you only look at coarse averages (e.g.\ averages over regions), yet have very
+different pointwise densities because mass can concentrate into narrow spikes or oscillate rapidly. If $V[\nu](y)$ depends
+directly on $\nu(y)$, these small ``distribution-level'' changes can produce large changes in the local congestion cost,
+so the regularity assumptions behind standard fixed-point existence arguments fail.
+
+To make these statements precise, we first fix the paper's equilibrium notation (Subsection~\ref{sec:cn_equilibrium}) and then explain
+the relevant notion of ``two distributions being close'' (weak-$*$ topology) and why local congestion breaks it
+(Subsection~\ref{sec:cn_weakstar_gap}).
+
+The key contribution in \cite{blanchet2016optimal} is to exploit an optimal-transport structure (and a variational formulation in potential
+cases) to turn equilibrium computation into an optimisation problem over distributions.
+
+
+
+\subsection{Equilibrium}\label{sec:cn_equilibrium}
+In a finite-player game, one can describe an equilibrium by listing each player's action (or mixed strategy).
+In a \emph{non-atomic} game with a continuum of agents, this is not the right object: we do not label agents individually,
+and a single agent has negligible influence on the aggregate outcome. Instead, we describe equilibria at the population
+level using probability measures.
+
+\subsubsection{Spaces and Probability Measures}
+In the paper's notation, $X$ is the \emph{type space} (agent characteristics) and $Y$ is the \emph{action space}.
+We write $\mathcal{P}(X)$ for the set of \emph{Borel} probability measures on $X$ and similarly $\mathcal{P}(Y)$.
+Here ``Borel'' means the measures are defined on the Borel $\sigma$-algebra generated by the topology on $X$ (and $Y$),
+which is the standard choice when $X$ and $Y$ are compact metric spaces. (The ``continuum of agents'' aspect is captured
+by describing populations via measures.)
+The population of types is given exogenously by a probability measure $\mu\in\mathcal{P}(X)$.
+
+\subsubsection{Equilibrium as a Joint Distribution}
+What matters is the population-level assignment of actions to types: for each type $x$, what fraction of agents choose
+each action $y$. This assignment is represented by a joint probability measure on $X\times Y$.
+
+An equilibrium is described by a joint probability measure $\gamma\in\mathcal{P}(X\times Y)$, where (informally)
+$\gamma(A\times B)$ is the probability that an agent has type in $A\subseteq X$ and chooses an action in $B\subseteq Y$.
+The first marginal of $\gamma$ is the induced distribution of types and must equal $\mu$.
+The second marginal of $\gamma$ is the induced distribution of actions, denoted $\nu\in\mathcal{P}(Y)$.
+Using the coordinate projections $\pi_X(x,y)=x$ and $\pi_Y(x,y)=y$, these marginal constraints can be written as
+push-forward relations:
+$$
+(\pi_X)_{\#}\gamma=\mu,\qquad \nu=(\pi_Y)_{\#}\gamma.
+$$
+If the equilibrium is \emph{pure}, then there is a map $T:X\to Y$ such that $\gamma$ is carried by the graph of $T$,
+i.e.\ $\gamma=(\mathrm{id},T)_{\#}\mu$.
+
+\subsubsection{Costs and Externalities}
+Costs are additively separable: an $x$-type agent who plays action $y$ incurs a cost of the form
+$$
+\Phi(x,y,\nu)=c(x,y)+V[\nu](y),
+$$
+where $c(x,y)$ is an idiosyncratic term (distance, mismatch, etc.), and the map $\nu\mapsto V[\nu]$ captures
+externalities induced by the aggregate action distribution $\nu$.
+
+\subsubsection{Reference Measure, Densities, and Local Congestion}
+To speak about ``local density'' at an action $y$, we need $\nu$ to admit a density with respect to some reference
+measure on $Y$.
+Fix a reference measure $m_0$ on $Y$ and restrict to action distributions $\nu$ that are absolutely continuous with
+respect to $m_0$ (written $\nu\ll m_0$). In that case, $\nu$ admits a density $\frac{d\nu}{dm_0}$, and with a slight abuse
+of notation we write $\nu(y)$ for this density value at $y$.
+Local congestion costs take the form
+$$
+V[\nu](y)=f(\nu(y)),
+$$
+so the externality cost at $y$ depends pointwise on how concentrated the action distribution is at $y$.
+
+\subsubsection{Cournot--Nash Equilibrium Condition (Formal Definition)}\label{sec:cn_equilibrium_definition}
+\paragraph{Motivation.}
+So far, $\gamma$ is just a joint distribution that matches the exogenous type distribution $\mu$ and induces an action
+distribution $\nu$. To call $\gamma$ an \emph{equilibrium}, we must encode the behavioural requirement that agents choose
+cost-minimising actions \emph{given} the aggregate action distribution $\nu$ that results from everyone's choices.
+
+\paragraph{Intuition.}
+Fix a candidate aggregate action distribution $\nu$. Each type $x$ then faces a deterministic optimisation problem:
+choose $y\in Y$ to minimise $c(x,y)+V[\nu](y)$. An equilibrium is a self-consistent joint distribution $\gamma$ such that
+(i) its second marginal is exactly the $\nu$ used in the optimisation, and (ii) $\gamma$ puts mass only on pairs $(x,y)$
+where $y$ is a best response for type $x$.
+
+\paragraph{Definition.}
+Let $\gamma\in\mathcal{P}(X\times Y)$ and let $\nu=(\pi_Y)_{\#}\gamma$ be its second marginal.
+We say that $\gamma$ is a \textbf{Cournot--Nash equilibrium} (in distributional form) if
+\begin{enumerate}[label=(\roman*)]
+    \item $(\pi_X)_{\#}\gamma=\mu$ (types are distributed according to $\mu$), and
+    \item $\gamma$ is concentrated on best responses given $\nu$, meaning
+    $$
+    \gamma\bigl(\{(x,y)\in X\times Y:\ c(x,y)+V[\nu](y)=\min_{z\in Y}\bigl(c(x,z)+V[\nu](z)\bigr)\}\bigr)=1.
+    $$
+
+    In probabilistic terms: let $(\Omega,\mathcal{F},\mathbb{P})$ be a probability space and let $(X_{\Omega},Y_{\Omega})$
+    be an $(X\times Y)$-valued random variable with law $\gamma$ (so $\mathbb{P}[(X_{\Omega},Y_{\Omega})\in A]=\gamma(A)$ for
+    every measurable $A\subseteq X\times Y$). Define the event
+    $$
+    E := \Bigl\{c(X_{\Omega},Y_{\Omega})+V[\nu](Y_{\Omega})=\min_{z\in Y}\bigl(c(X_{\Omega},z)+V[\nu](z)\bigr)\Bigr\}.
+    $$
+    Then the condition $\gamma(\cdot)=1$ above is exactly the statement $\mathbb{P}(E)=1$: with probability one, the sampled
+    action $Y_{\Omega}$ is a best response for the sampled type $X_{\Omega}$ given the aggregate distribution $\nu$.
+
+\end{enumerate}
+
+
+\paragraph{Intuition.}
+This expresses a ``best response for almost every agent'' condition in a non-atomic (continuum) model: we do \emph{not}
+quantify over individually labelled agents. Instead, we quantify over the population measure $\gamma$: the set of
+non-best-response pairs has $\gamma$-mass $0$, i.e.\ if we pick an agent at random from the population (sample
+$(x,y)\sim\gamma$), then with probability $1$ the realised action $y$ is a best response for the realised type $x$.
+
+Equivalently, if we define the best-response set $B_{\nu}\subseteq X\times Y$ by the bracketed condition inside
+$\gamma(\cdot)$ above, then $\gamma(B_{\nu})=1$ and the event $E$ is exactly $\{(X_{\Omega},Y_{\Omega})\in B_{\nu}\}$.
+
+\paragraph{Alternative Formulation.}
+
+Equivalently, define the \emph{value function}
+$$
+\varphi(x):=\min_{z\in Y}\bigl(c(x,z)+V[\nu](z)\bigr),
+$$
+then the equilibrium condition above can be written as the pair of inequalities
+$$
+c(x,y)+V[\nu](y)\ge \varphi(x)\quad\text{for all }x\in X\text{ and (where defined) }y\in Y,
+$$
+with equality holding $\gamma$-almost everywhere (i.e.\ for $\gamma$-almost every pair $(x,y)$).
+
+\paragraph{Example.}
+In a satellite-association toy model, let $x$ be a user location and let $y$ index a satellite/beam choice. The term
+$c(x,y)$ can represent a geometry-based penalty (e.g.\ path loss), and $V[\nu](y)$ can represent a congestion penalty for
+how many users choose satellite/beam $y$ (captured by the aggregate action distribution $\nu$). The equilibrium
+condition says that, under the self-consistent distribution of choices, almost every user is assigned only to a choice
+that minimises its own cost given the congestion created by all users.
+
+
+\paragraph{Motivation.}
+The equilibrium definition in Subsubsection~\ref{sec:cn_equilibrium_definition} is a self-consistent best-response
+condition on a joint distribution $\gamma$.
+This definition is conceptually clear, but it does not yet tell us how to \emph{compute} an equilibrium, or how to obtain
+uniqueness and stability properties.
+
+\paragraph{Intuition.}
+The paper's key step is to identify an important class of models where the equilibrium conditions are exactly the
+first-order optimality conditions of a single global objective. In that case, equilibrium computation becomes an
+optimisation problem over distributions. Optimal transport enters through the transport cost term, while congestion and
+interactions enter through an ``energy'' functional of the action distribution.
+
+\paragraph{Definition.}
+In the \emph{potential} (variational) case, the externality map $\nu\mapsto V[\nu]$ is assumed to be the first variation
+of some functional $\mathcal{E}$ defined on action distributions:
+$$
+V[\nu] \;=\; \frac{\delta \mathcal{E}}{\delta \nu}.
+$$
+Under this assumption, equilibrium action distributions $\nu$ can be characterised as minimisers of an OT-structured
+functional of the form
+$$
+\nu \in \arg\min_{\tilde\nu}\ \mathcal{W}_c(\mu,\tilde\nu) + \mathcal{E}[\tilde\nu],
+$$
+and an equilibrium coupling $\gamma$ is then obtained as an optimal transport plan between $\mu$ and that minimising
+$\nu$.
+
+\paragraph{Example.}
+A standard ``good'' potential form used in the paper is
+$$
+\mathcal{E}[\nu] \;=\; \int_Y F(y,\nu(y))\,dm_0(y) \;+\; \frac12\iint_{Y\times Y} \phi(y,z)\,d\nu(y)\,d\nu(z),
+$$
+where the first term is a local congestion energy (with $F'(\cdot)=f(\cdot)$) and the second term is a symmetric pairwise
+interaction energy (symmetry is what makes it a potential).
+
+\subsection{Why Variational Structure Matters}\label{sec:cn_variational_importance}
+
+\paragraph{Motivation.}
+The ability to write equilibrium computation as a global minimisation problem is the reason this approach becomes
+practical. Without a variational structure, we typically lose both tractability and the clean uniqueness/stability
+statements that come from convexity (or convexity along transport geodesics).
+
+\paragraph{Intuition.}
+For general Nash equilibria, there is no reason that ``the equilibrium'' should be the minimiser of a single scalar
+objective: different players optimise different objectives, and their incentives can create cycles and rotational
+behaviour. A variational (potential) structure is exactly the condition that makes the equilibrium conditions integrable
+into a single energy landscape: equilibria are stationary points of that landscape, and in the convex cases they are
+global minimisers.
+
+In the Cournot--Nash setting considered by \cite{blanchet2016optimal}, the variational structure is what turns a
+definition-by-best-response (Subsubsection~\ref{sec:cn_equilibrium_definition}) into a computable characterisation
+(Subsection~\ref{sec:cn_variational_formulation}): solve a minimisation problem for the action distribution $\nu$, then
+recover the coupling $\gamma$ using optimal transport.
+
+\paragraph{Definition.}
+We will refer to the model as \textbf{variational} (or \textbf{potential}) if there exists a functional
+$\mathcal{E}$ on action distributions such that $V[\nu]=\delta\mathcal{E}/\delta\nu$.
+In this case, the equilibrium conditions coincide with the first-order optimality conditions of the global objective
+$\mathcal{W}_c(\mu,\nu)+\mathcal{E}[\nu]$.
+If, in addition, this objective is (geodesically) convex in a suitable sense, then the equilibrium is unique and stable
+to perturbations of the inputs $(\mu,c,\mathcal{E})$.
+
+\paragraph{Example.}
+Not every game has this structure. In finite games such as Rock--Paper--Scissors or Matching Pennies, incentives create
+cyclic dominance, and there is no single potential function whose value strictly improves along unilateral best-response
+moves. In continuous-action games, strong asymmetric cross-effects can lead to non-monotone best-response operators (the
+system behaves more like a rotation than a gradient flow). The relevance here is conceptual: the Blanchet--Carlier
+approach relies on being able to convert equilibrium computation into minimisation, which is precisely what fails when a
+game is not variational.
+
+\subsection{Practical Takeaway: Variational Characterisation vs.\ Continuum Complexity}
+\label{sec:cn_weakstar_gap}
+\label{sec:cn_variational_formulation}
+The main technical payoff in \cite{blanchet2016optimal} is that, in the \emph{potential} (variational) case, equilibrium
+computation can be reframed as a single global optimisation problem (an optimal-transport assignment term plus an energy
+term in the action distribution). This provides a principled \emph{characterisation} of equilibrium and, in favourable
+convex cases, supports uniqueness and stable numerical schemes.
+
+For this study, however, pursuing the full continuum route is not an attractive path: the formulation lives on
+continuum objects (measures on compact metric spaces, densities, and associated regularity/continuity assumptions), while
+our satellite questions are naturally finite and simulator-driven. We therefore retain the equilibrium definition as a
+useful theoretical lens, but we do not attempt to implement or rely on the full continuum variational machinery.
+
+
+
+% References for citations used here are provided by the parent document (`docs/spec.tex`).

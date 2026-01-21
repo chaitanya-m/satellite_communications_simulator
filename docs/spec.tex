@@ -18,6 +18,11 @@
 
 \setlist{nosep}
 
+% Allow `\input{...}` to work whether compiling from repo root or from `docs/`.
+\makeatletter
+\def\input@path{{./}{docs/}}
+\makeatother
+
 % ----------------------------
 % Metadata
 % ----------------------------
@@ -97,6 +102,11 @@ and the implications for future development and industrialization.
 
 \section{Product Specification}
 Delivered product specifications (v0.2 and v0.3) are documented in the appendix.
+
+\noindent Across the broader programme of work, we focus on three system objectives:
+(i) planning --- optimal interference,
+(ii) dimensioning --- per-user QoS under network outage constraints, and
+(iii) routing --- route existence.
 
 \subsection{Planned v0.4.1: Corrected Radio Model}
 v0.4.1 replaces the i.i.d. SINR abstraction with a received-power model aligned with
@@ -354,6 +364,17 @@ probability based on multiple seeded simulations, and the solution was the minim
 
 Throughput modelling via PRB capacity, detailed physical layer / link budgets, and full network routing were not part of v0.1 scope.
 
+\section{Study --- Potential Theoretical Framework}
+\begingroup
+\let\StudySubsection\subsection
+\let\StudySubsubsection\subsubsection
+\let\StudyParagraph\paragraph
+\renewcommand{\section}{\StudySubsection}
+\renewcommand{\subsection}{\StudySubsubsection}
+\renewcommand{\subsubsection}{\StudyParagraph}
+\input{study}
+\endgroup
+
 
 \section*{Acknowledgments}
 % Optional. Acknowledge funding support and collaborators.
@@ -363,6 +384,11 @@ Throughput modelling via PRB capacity, detailed physical layer / link budgets, a
 Jean-Sébastien Gomez.
 \textit{Stochastic models for cellular networks planning and performance assessment}.
 PhD thesis, Télécom ParisTech (EDITE), 2018.
+
+\bibitem{blanchet2016optimal}
+Adrien Blanchet and Guillaume Carlier.
+\textit{Optimal transport and Cournot-Nash equilibria}.
+\textit{Mathematics of Operations Research}, 41(1):125--145, 2016.
 \end{thebibliography}
 
 \end{document}

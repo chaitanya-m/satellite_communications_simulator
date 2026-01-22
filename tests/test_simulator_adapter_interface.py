@@ -21,8 +21,6 @@ def test_local_ppp_adapter_deterministic_trial():
         satellites=SatellitesConfig(altitude_km=550.0),
         visibility=VisibilityConfig(max_off_nadir_deg=60.0),
         channel_quality=ChannelQualityConfig(
-            sinr_mu_db=0.0,
-            sinr_sigma_db=1.0,
             bandwidth_hz=1.0,
         ),
     )

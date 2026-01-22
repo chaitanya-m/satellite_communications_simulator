@@ -16,6 +16,13 @@ docs/*.aux
 docs/*.log
 docs/*.out
 docs/*.pdf
+docs/study/
+
+# Local LaTeX build artifacts (when compiling `docs/spec.tex` from repo root)
+spec.aux
+spec.log
+spec.out
+spec.pdf
 
 # Top-level shell scripts
 /*.sh

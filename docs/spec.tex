@@ -101,52 +101,29 @@ and the implications for future development and industrialization.
 % Languages, tools, constraints, and design decisions.
 
 \section{Product Specification}
-Delivered product specifications (v0.2 and v0.3) are documented in the appendix.
+Delivered product specifications (v0.2, v0.3, and v0.4.1) are documented in the appendix.
 
 \noindent Across the broader programme of work, we focus on three system objectives:
 (i) planning --- optimal interference,
 (ii) dimensioning --- per-user QoS under network outage constraints, and
 (iii) routing --- route existence.
 
-\subsection{Planned v0.4.1: Corrected Radio Model}
-v0.4.1 replaces the i.i.d. SINR abstraction with a received-power model aligned with
-\cite{gomez2018stochastic}.
-\begin{itemize}
-    \item \textbf{Received power}: for user at $x$ and satellite at $y$,
-    $P(x,y)=P_t G_{xy}\|x-y\|^{-\gamma}$, where $\gamma$ is the path-loss exponent and
-    $G_{xy}\sim \mathrm{Exp}(1)$ models Rayleigh fading.
-    \item \textbf{Serving satellite}: $y_0=\arg\max_y P(x,y)$ among visible satellites.
-    \item \textbf{SIR}: $\mathrm{SIR}(x)=\frac{P(x,y_0)}{\sum_{y\in \Phi_b} P(x,y)-P(x,y_0)}$.
-    \item \textbf{SINR}: $\mathrm{SINR}(x)=\frac{P(x,y_0)}{\sum_{y\in \Phi_b} P(x,y)-P(x,y_0)+N_0 W}$.
-    \item \textbf{Capacity}: $C=W\log_2(1+\mathrm{SINR})$ drives throughput metrics.
-\end{itemize}
-Definitions: $P_t$ is per-satellite transmit power (W); $G_{xy}$ is a unitless small-scale
-fading power gain for the link $x\leftrightarrow y$ (fast fading from multipath, modelled as
-exponential with mean 1 under Rayleigh fading; power exceeds its mean about 37\% of the time);
-$\|x-y\|$ is link distance (m) measured in 3D;
-$\gamma$ is the path-loss exponent; $\Phi_b$ is the set of visible satellites for user $x$;
-$y_0=\arg\max_y P(x,y)$ means the user associates to the visible satellite with the highest
-instantaneous received power (strongest link, with ties broken arbitrarily); $N_0$ is noise
-spectral density (W/Hz); $W$ is link bandwidth (Hz). SIR ignores noise, SINR includes noise.
-
-In this model the fast multipath fluctuations are captured by a random “fading power gain” ($G_{xy}$) 
-that multiplies received power, and under Rayleigh fading ($G_{xy}\sim \mathrm{Exp}(1)$) 
-(an exponential with mean 1), so the link power randomly rises above or below its average due to 
-constructive/destructive interference.
-
 \subsection{Planned v0.4.2: Outage Experiment and Test Harness}
-v0.4.2 sets up the outage experiment and test harness without changing simulator behaviour.
+v0.4.2 sets up the outage experiment and test harness on top of the v0.4.1 simulator output metrics,
+without further changes to simulator behaviour.
 \begin{itemize}
     \item \textbf{Outage definition}: for a trial with user set $\mathcal{U}$ and per-user service indicators
     $S_i \in \{0,1\}$, define outage rate as
     $o = 1 - \frac{1}{|\mathcal{U}|} \sum_{i \in \mathcal{U}} S_i$.
-    The simulator defines $S_i$ (default: user is visible and throughput $\ge R_{\min}$).
+    The simulator defines $S_i$ (default: user is visible and best-link throughput $\ge R_{\min}$).
     \item \textbf{Bernoulli experiment}: define the success event $A=1$ iff $o \le o_{\max}$.
     For a design $d$, estimate $p = \mathbb{P}(A=1)$ and certify feasibility when
     $\mathrm{LCB}(p) \ge p_{\mathrm{target}}$ using existing Bernoulli certificates.
     \item \textbf{Trial validity}: ignore trials with $|\mathcal{U}|=0$ (no ground demand).
     \item \textbf{Simulator contract}: require \texttt{outage\_rate} and \texttt{n\_ground} metrics
     from the adapter, even before PRBs are implemented.
+    \item \textbf{End-to-end test}: add a dimensioning test that uses the existing search and certificate
+    objects to find the minimum feasible satellite intensity under an outage target.
 \end{itemize}
 
 \subsection{Planned v0.5: PRB Capacity and Outage Results}
@@ -204,6 +181,32 @@ v0.5 is split into subversions to manage PRB complexity while producing outage r
 
 \appendix
 \section{Appendix: Delivered Product Specifications}
+
+\subsection{v0.4.1: Corrected Radio Model}
+v0.4.1 replaces the i.i.d. lognormal SINR surrogate with a received-power model aligned with
+\cite{gomez2018stochastic}.
+\begin{itemize}
+    \item \textbf{Received power}: for user at $x$ and satellite at $y$,
+    $P(x,y)=P_t G_{xy}\|x-y\|^{-\gamma}$, where $\gamma$ is the path-loss exponent and
+    $G_{xy}\sim \mathrm{Exp}(1)$ models Rayleigh fading.
+    \item \textbf{Serving satellite}: $y_0=\arg\max_y P(x,y)$ among visible satellites.
+    \item \textbf{SIR}: $\mathrm{SIR}(x)=\frac{P(x,y_0)}{\sum_{y\in \Phi_b} P(x,y)-P(x,y_0)}$.
+    \item \textbf{SINR}: $\mathrm{SINR}(x)=\frac{P(x,y_0)}{\sum_{y\in \Phi_b} P(x,y)-P(x,y_0)+N_0 W}$.
+    \item \textbf{Capacity}: $C=W\log_2(1+\mathrm{SINR})$ drives throughput metrics.
+\end{itemize}
+Definitions: $P_t$ is per-satellite transmit power (W); $G_{xy}$ is a unitless small-scale
+fading power gain for the link $x\leftrightarrow y$ (fast fading from multipath, modelled as
+exponential with mean 1 under Rayleigh fading; power exceeds its mean about 37\% of the time);
+$\|x-y\|$ is link distance (m) measured in 3D;
+$\gamma$ is the path-loss exponent; $\Phi_b$ is the set of visible satellites for user $x$;
+$y_0=\arg\max_y P(x,y)$ means the user associates to the visible satellite with the highest
+instantaneous received power (strongest link, with ties broken arbitrarily); $N_0$ is noise
+spectral density (W/Hz); $W$ is link bandwidth (Hz). SIR ignores noise, SINR includes noise.
+
+In this model the fast multipath fluctuations are captured by a random “fading power gain” ($G_{xy}$)
+that multiplies received power, and under Rayleigh fading ($G_{xy}\sim \mathrm{Exp}(1)$)
+(an exponential with mean 1), so the link power randomly rises above or below its average due to
+constructive/destructive interference.
 
 \subsection{v0.3: QoS and Channel Quality}
 QoS is defined by two minimum constraints that must both be met:

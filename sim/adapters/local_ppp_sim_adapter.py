@@ -25,10 +25,16 @@ class LocalPPPSimulatorAdapter(SimulatorAdapter):
             raise ConfigValidationError("max_off_nadir_deg must be positive")
         if config.channel_quality.bandwidth_hz <= 0.0:
             raise ConfigValidationError("bandwidth_hz must be positive")
-        if config.channel_quality.sinr_sigma_db < 0.0:
-            raise ConfigValidationError("sinr_sigma_db must be non-negative")
         if config.channel_quality.throughput_aggregation not in {"mean", "sum"}:
             raise ConfigValidationError("throughput_aggregation must be 'mean' or 'sum'")
+        if config.channel_quality.min_user_throughput_bps < 0.0:
+            raise ConfigValidationError("min_user_throughput_bps must be non-negative")
+        if config.channel_quality.tx_power_w <= 0.0:
+            raise ConfigValidationError("tx_power_w must be positive")
+        if config.channel_quality.pathloss_exponent <= 0.0:
+            raise ConfigValidationError("pathloss_exponent must be positive")
+        if config.channel_quality.noise_density_w_per_hz < 0.0:
+            raise ConfigValidationError("noise_density_w_per_hz must be non-negative")
         self._config = config
 
     def run_trial(self, *, design: Any, seed: int) -> Dict[str, float]:
@@ -44,20 +50,19 @@ class LocalPPPSimulatorAdapter(SimulatorAdapter):
             altitude_km=cfg.satellites.altitude_km,
             max_off_nadir_deg=cfg.visibility.max_off_nadir_deg,
             earth_radius_km=cfg.world.earth_radius_km,
-            sinr_mu_db=cfg.channel_quality.sinr_mu_db,
-            sinr_sigma_db=cfg.channel_quality.sinr_sigma_db,
             bandwidth_hz=cfg.channel_quality.bandwidth_hz,
             throughput_aggregation=cfg.channel_quality.throughput_aggregation,
+            min_user_throughput_bps=cfg.channel_quality.min_user_throughput_bps,
+            tx_power_w=cfg.channel_quality.tx_power_w,
+            pathloss_exponent=cfg.channel_quality.pathloss_exponent,
+            noise_density_w_per_hz=cfg.channel_quality.noise_density_w_per_hz,
             rng=rng,
         )
         metrics = sim.evaluate(lambda_sats=float(design))
-        if "outage_rate" not in metrics:
-            # Default outage definition uses coverage-only serving semantics.
-            metrics["outage_rate"] = 1.0 - float(metrics["coverage"])
         return metrics
 
     def describe(self) -> Dict[str, str]:
         return {
             "name": "local_ppp_3d",
-            "supports": "coverage, throughput",
+            "supports": "coverage, throughput, outage_rate",
         }

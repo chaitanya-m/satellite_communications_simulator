@@ -5,7 +5,8 @@ This module intentionally keeps the model minimal and closed-form:
 - users are a Poisson point process (PPP) on a spherical Earth surface
 - satellites are a PPP on a spherical orbital shell
 - coverage is evaluated per user with a simple off-nadir visibility gate
-- channel quality uses a lognormal SINR model to produce throughput
+- channel quality uses a received-power model with Rayleigh fading, interference,
+  and thermal noise
 """
 
 from __future__ import annotations
@@ -35,12 +36,20 @@ class Dimensioning_3D:
         max off-nadir angle (per-user visibility).
 
     Throughput:
-        Per-user capacity uses the best visible link (highest sampled SINR),
-        aggregated across users by mean (default) or sum.
+        Per-user capacity is computed on the best (maximum received-power) visible
+        link, with interference from other visible satellites and thermal noise.
+        Capacities are aggregated across users by mean (default) or sum.
+
+    Outage:
+        A user is considered served if (i) at least one satellite is visible and
+        (ii) that user's best-link throughput is >= min_user_throughput_bps.
+        The outage_rate is 1 - served_fraction. If min_user_throughput_bps=0,
+        this reduces to 1 - coverage.
 
     Outputs:
         - coverage: fraction of users with at least one visible satellite
-        - throughput: aggregated per-user capacity via a lognormal SINR model
+        - throughput: aggregated per-user capacity from the received-power model
+        - outage_rate: 1 - fraction of users that are served
         - n_ground: sampled user count for the trial
         - n_sats: sampled satellite count for the trial
     """
@@ -54,10 +63,12 @@ class Dimensioning_3D:
         altitude_km: float,
         max_off_nadir_deg: float,
         earth_radius_km: float = 6371.0,
-        sinr_mu_db: float = 0.0,
-        sinr_sigma_db: float = 1.0,
         bandwidth_hz: float = 1.0,
         throughput_aggregation: str = "mean",
+        min_user_throughput_bps: float = 0.0,
+        tx_power_w: float = 1.0,
+        pathloss_exponent: float = 2.0,
+        noise_density_w_per_hz: float = 0.0,
         rng: random.Random | None = None,
     ):
         self.ground_lambda = float(ground_lambda)
@@ -66,10 +77,12 @@ class Dimensioning_3D:
         self.altitude_km = float(altitude_km)
         self.max_off_nadir_deg = float(max_off_nadir_deg)
         self.earth_radius_km = float(earth_radius_km)
-        self.sinr_mu_db = float(sinr_mu_db)
-        self.sinr_sigma_db = float(sinr_sigma_db)
         self.bandwidth_hz = float(bandwidth_hz)
         self.throughput_aggregation = throughput_aggregation
+        self.min_user_throughput_bps = float(min_user_throughput_bps)
+        self.tx_power_w = float(tx_power_w)
+        self.pathloss_exponent = float(pathloss_exponent)
+        self.noise_density_w_per_hz = float(noise_density_w_per_hz)
         self.rng = rng or random.Random()
 
         # Last realised counts (for inspection / testing only)
@@ -78,6 +91,14 @@ class Dimensioning_3D:
 
         if self.throughput_aggregation not in {"mean", "sum"}:
             raise ValueError("throughput_aggregation must be 'mean' or 'sum'")
+        if self.min_user_throughput_bps < 0.0:
+            raise ValueError("min_user_throughput_bps must be non-negative")
+        if self.tx_power_w <= 0.0:
+            raise ValueError("tx_power_w must be positive")
+        if self.pathloss_exponent <= 0.0:
+            raise ValueError("pathloss_exponent must be positive")
+        if self.noise_density_w_per_hz < 0.0:
+            raise ValueError("noise_density_w_per_hz must be non-negative")
 
         self._cos_off_nadir_max = math.cos(math.radians(self.max_off_nadir_deg))
         self._sat_lat_min, self._sat_lat_max = self._satellite_lat_bounds()
@@ -155,10 +176,82 @@ class Dimensioning_3D:
         cos_psi = (r - R * cos_phi) / denom
         return max(-1.0, min(1.0, cos_psi))
 
-    def _sample_sinr_linear(self) -> float:
-        """Sample per-link SINR in linear scale from a lognormal model."""
-        sinr_db = self.rng.gauss(self.sinr_mu_db, self.sinr_sigma_db)
-        return 10.0 ** (sinr_db / 10.0)
+    def _slant_range_km(self, cos_phi: float) -> float:
+        """Compute slant range (km) from ground point to satellite."""
+        R = self.earth_radius_km
+        r = self.earth_radius_km + self.altitude_km
+        # Law of cosines in 3D using the Earth-centered angle between radial directions.
+        return math.sqrt(r * r + R * R - 2.0 * r * R * cos_phi)
+
+    def _sample_received_power_w(self, slant_range_km: float) -> float:
+        """Sample received power for one link under a Rayleigh fading model.
+
+        Model:
+            P(x,y) = P_t * G_xy * ||x-y||^{-gamma}
+
+        - P_t is an effective per-satellite transmit power scale (W).
+        - G_xy ~ Exp(1) is the Rayleigh fading power gain (mean 1).
+        - ||x-y|| is the 3D distance between user and satellite.
+
+        Note: This is intentionally simplified (no antenna patterns, no
+        atmospheric losses, no frequency-dependent constants). It is meant as a
+        tractable stochastic-geometry-style model rather than a full link budget.
+        """
+        d_m = max(1e-9, slant_range_km * 1000.0)
+        fading_gain = self.rng.expovariate(1.0)  # Exp(1): mean 1
+        return self.tx_power_w * fading_gain * (d_m ** (-self.pathloss_exponent))
+
+    def _capacity_for_user(self, visible_sats: list[tuple[float, float]]) -> float:
+        """Compute best-link capacity for one user given a list of visible satellites.
+
+        This method returns a **rate in bits per second (bps)** for a single user.
+
+        Model (one user, one trial):
+        - For each visible satellite link, sample a received power value `P_xy` (W).
+        - Choose the serving satellite as the link with maximum received power.
+        - Treat all other visible satellites as interferers.
+        - Compute linear SINR (dimensionless power ratio):
+            SINR = S / (I + N)
+          where:
+            - S is the serving received power (W)
+            - I is the sum of interfering received powers (W)
+            - N is thermal noise power (W) computed as N = N0 * W
+              with noise spectral density N0 (W/Hz) and bandwidth W (Hz)
+        - Map SINR to throughput using a Shannon-like capacity formula:
+            spectral_efficiency = log2(1 + SINR)    [bits / second / Hz]
+            capacity_bps = bandwidth_hz * spectral_efficiency
+
+        Notes:
+        - This is a deliberately minimal abstraction: it is not a full link budget
+          (no antenna patterns, coding gaps, frequency terms, etc.).
+        - There is no scheduling or sharing here: each user is evaluated on its
+          best link independently, and interference is modelled as a sum over all
+          other visible satellites for that user.
+        """
+        if not visible_sats:
+            return 0.0
+
+        received_powers: list[float] = []
+        for cos_phi, _cos_psi in visible_sats:
+            slant_range_km = self._slant_range_km(cos_phi)
+            received_powers.append(self._sample_received_power_w(slant_range_km))
+
+        signal_w = max(received_powers)
+        interference_w = sum(received_powers) - signal_w
+        # Thermal noise power (W) = noise spectral density (W/Hz) * bandwidth (Hz).
+        noise_w = self.noise_density_w_per_hz * self.bandwidth_hz
+        denom_w = interference_w + noise_w
+        if denom_w <= 0.0:
+            # If both interference and noise are exactly zero, SINR is infinite.
+            # This can only happen if noise_density_w_per_hz=0 and there is only
+            # one visible satellite (no interferers).
+            sinr_linear = float("inf")  # dimensionless
+        else:
+            sinr_linear = signal_w / denom_w  # dimensionless
+
+        # Spectral efficiency in bits/s/Hz, then multiply by Hz -> bits/s (bps).
+        spectral_efficiency = math.log2(1.0 + sinr_linear)
+        return self.bandwidth_hz * spectral_efficiency
 
     def evaluate(self, lambda_sats: float) -> dict[str, float]:
         """Run a single Monte Carlo trial at a given satellite intensity."""
@@ -172,6 +265,7 @@ class Dimensioning_3D:
             return {
                 "coverage": 1.0,  # vacuously covered
                 "throughput": 0.0,
+                "outage_rate": 0.0,
                 "n_ground": 0.0,
                 "n_sats": float(n_sats),
             }
@@ -180,6 +274,7 @@ class Dimensioning_3D:
             return {
                 "coverage": 0.0,
                 "throughput": 0.0,
+                "outage_rate": 1.0,
                 "n_ground": float(n_ground),
                 "n_sats": 0.0,
             }
@@ -196,10 +291,10 @@ class Dimensioning_3D:
 
         # Per-user visibility gating: require at least one satellite within off-nadir limit.
         covered = 0
+        served = 0
         throughput_sum = 0.0
         for glat, glon in ground_points:
-            visible = False
-            best_capacity = 0.0
+            visible_links: list[tuple[float, float]] = []
             for slat, slon in sat_points:
                 cos_phi = self._cos_central_angle(glat, glon, slat, slon)
                 cos_phi = max(-1.0, min(1.0, cos_phi))
@@ -209,16 +304,19 @@ class Dimensioning_3D:
                     continue
                 cos_psi = self._cos_off_nadir(cos_phi)
                 if cos_psi >= self._cos_off_nadir_max:
-                    visible = True
-                    sinr_linear = self._sample_sinr_linear()
-                    capacity = self.bandwidth_hz * math.log1p(sinr_linear)
-                    if capacity > best_capacity:
-                        best_capacity = capacity
-            if visible:
+                    visible_links.append((cos_phi, cos_psi))
+
+            if visible_links:
                 covered += 1
-            throughput_sum += best_capacity
+                best_capacity = self._capacity_for_user(visible_links)
+                if best_capacity >= self.min_user_throughput_bps:
+                    served += 1
+                throughput_sum += best_capacity
+            else:
+                throughput_sum += 0.0
 
         coverage = covered / n_ground
+        outage_rate = 1.0 - (served / n_ground)
         if self.throughput_aggregation == "sum":
             throughput = throughput_sum
         else:
@@ -226,6 +324,7 @@ class Dimensioning_3D:
         return {
             "coverage": coverage,
             "throughput": throughput,
+            "outage_rate": outage_rate,
             "n_ground": float(n_ground),
             "n_sats": float(n_sats),
         }

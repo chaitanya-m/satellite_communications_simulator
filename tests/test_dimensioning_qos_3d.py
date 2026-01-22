@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import math
 import multiprocessing as mp
 import random
 
@@ -73,13 +72,13 @@ def _run_qos_search() -> dict[str, int | None]:
     alpha = 0.05
     delta = 0.3
 
-    sinr_mu_db = 0.0
-    sinr_sigma_db = 0.0
+    # Use a noise-limited regime so that increasing satellite density improves
+    # QoS mainly through improved coverage (not through interference-limited
+    # pathologies). This keeps the test stable while still exercising the
+    # throughput-aware end-to-end loop.
     bandwidth_hz = 1.0
-
-    # With sigma=0, throughput = coverage * capacity; set throughput stricter than coverage.
-    capacity = bandwidth_hz * math.log1p(10.0 ** (sinr_mu_db / 10.0))
-    target_throughput = 0.7 * capacity
+    noise_density_w_per_hz = 1e-10
+    target_throughput = 0.04
 
     certificate_order = ["all_success", "clopper_pearson", "hoeffding"]
     certificates = {
@@ -102,10 +101,11 @@ def _run_qos_search() -> dict[str, int | None]:
         lat_max_deg=10.0,
         altitude_km=550.0,
         max_off_nadir_deg=20.0,
-        sinr_mu_db=sinr_mu_db,
-        sinr_sigma_db=sinr_sigma_db,
         bandwidth_hz=bandwidth_hz,
         throughput_aggregation="mean",
+        tx_power_w=1.0,
+        pathloss_exponent=2.0,
+        noise_density_w_per_hz=noise_density_w_per_hz,
     )
     tasks = [
         (

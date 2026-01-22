@@ -101,30 +101,12 @@ and the implications for future development and industrialization.
 % Languages, tools, constraints, and design decisions.
 
 \section{Product Specification}
-Delivered product specifications (v0.2, v0.3, and v0.4.1) are documented in the appendix.
+Delivered product specifications (v0.2, v0.3, v0.4.1, and v0.4.2) are documented in the appendix.
 
 \noindent Across the broader programme of work, we focus on three system objectives:
 (i) planning --- optimal interference,
 (ii) dimensioning --- per-user QoS under network outage constraints, and
 (iii) routing --- route existence.
-
-\subsection{Planned v0.4.2: Outage Experiment and Test Harness}
-v0.4.2 sets up the outage experiment and test harness on top of the v0.4.1 simulator output metrics,
-without further changes to simulator behaviour.
-\begin{itemize}
-    \item \textbf{Outage definition}: for a trial with user set $\mathcal{U}$ and per-user service indicators
-    $S_i \in \{0,1\}$, define outage rate as
-    $o = 1 - \frac{1}{|\mathcal{U}|} \sum_{i \in \mathcal{U}} S_i$.
-    The simulator defines $S_i$ (default: user is visible and best-link throughput $\ge R_{\min}$).
-    \item \textbf{Bernoulli experiment}: define the success event $A=1$ iff $o \le o_{\max}$.
-    For a design $d$, estimate $p = \mathbb{P}(A=1)$ and certify feasibility when
-    $\mathrm{LCB}(p) \ge p_{\mathrm{target}}$ using existing Bernoulli certificates.
-    \item \textbf{Trial validity}: ignore trials with $|\mathcal{U}|=0$ (no ground demand).
-    \item \textbf{Simulator contract}: require \texttt{outage\_rate} and \texttt{n\_ground} metrics
-    from the adapter, even before PRBs are implemented.
-    \item \textbf{End-to-end test}: add a dimensioning test that uses the existing search and certificate
-    objects to find the minimum feasible satellite intensity under an outage target.
-\end{itemize}
 
 \subsection{Planned v0.5: PRB Capacity and Outage Results}
 v0.5 is split into subversions to manage PRB complexity while producing outage results.
@@ -182,7 +164,9 @@ v0.5 is split into subversions to manage PRB complexity while producing outage r
 \appendix
 \section{Appendix: Delivered Product Specifications}
 
-\subsection{v0.4.1: Corrected Radio Model}
+\subsection{v0.4: Corrected Radio Model and Outage Experiment}
+
+\subsubsection{v0.4.1: Corrected Radio Model}
 v0.4.1 replaces the i.i.d. lognormal SINR surrogate with a received-power model aligned with
 \cite{gomez2018stochastic}.
 \begin{itemize}
@@ -207,6 +191,24 @@ In this model the fast multipath fluctuations are captured by a random “fading
 that multiplies received power, and under Rayleigh fading ($G_{xy}\sim \mathrm{Exp}(1)$)
 (an exponential with mean 1), so the link power randomly rises above or below its average due to
 constructive/destructive interference.
+
+\subsubsection{v0.4.2: Outage Experiment and Test Harness}
+v0.4.2 sets up an outage experiment and an end-to-end test harness on top of the v0.4.1 simulator
+metrics, without further changes to simulator behaviour.
+\begin{itemize}
+    \item \textbf{Outage definition}: for a trial with user set $\mathcal{U}$ and per-user service indicators
+    $S_i \in \{0,1\}$, define outage rate as
+    $o = 1 - \frac{1}{|\mathcal{U}|} \sum_{i \in \mathcal{U}} S_i$.
+    The simulator defines $S_i$ (default: user is visible and best-link throughput $\ge R_{\min}$).
+    \item \textbf{Bernoulli experiment}: define the success event $A=1$ iff $o \le o_{\max}$.
+    For a design $d$, estimate $p = \mathbb{P}(A=1)$ and certify feasibility when
+    $\mathrm{LCB}(p) \ge p_{\mathrm{target}}$ using existing Bernoulli certificates.
+    \item \textbf{Trial validity}: ignore trials with $|\mathcal{U}|=0$ (no ground demand).
+    \item \textbf{Simulator contract}: require \texttt{outage\_rate} and \texttt{n\_ground} metrics from
+    the adapter.
+    \item \textbf{End-to-end test}: add a dimensioning test that uses the existing search and certificate
+    objects to find the minimum feasible satellite intensity under an outage target.
+\end{itemize}
 
 \subsection{v0.3: QoS and Channel Quality}
 QoS is defined by two minimum constraints that must both be met:

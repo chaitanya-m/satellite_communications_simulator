@@ -108,12 +108,33 @@ Delivered product specifications (v0.2, v0.3, v0.4.1, and v0.4.2) are documented
 (ii) dimensioning --- per-user QoS under network outage constraints, and
 (iii) routing --- route existence.
 
-\subsection{Planned v0.5: PRB Capacity and Outage Results}
-v0.5 is split into subversions to manage PRB complexity while producing outage results.
+\subsection{Planned v0.5: Ephemeris Constellations and Pluggable Point Processes}
+v0.5 introduces two modelling extensions for studying planning/dimensioning with more domain-specific structure while
+keeping the system plug-and-play.
 \begin{itemize}
-    \item \textbf{v0.5.1}: add the satellite PRB grid and PRB demand mapping, leaving allocation policy minimal.
-    \item \textbf{v0.5.2}: introduce a configurable scheduler and derive throughput from allocated PRBs.
-    \item \textbf{v0.5.3}: compute outage from SINR and PRB availability and report certified dimensioning outputs.
+    \item \textbf{v0.5.1 (Ephemeris system)}: add an ephemeris-based simulator option so that single-orbit constellations
+    can be studied as structured (non-Poisson) satellite placements. The ephemeris representation should be minimal and
+    explicit (e.g.\ orbit parameters + phasing + satellite count) and must integrate with the existing visibility and
+    metric outputs (\texttt{coverage}, \texttt{outage\_rate}, etc.).
+    \item \textbf{v0.5.2 (Pluggable distributions)}: add a configuration-driven mechanism to select and parameterise
+    different distribution models for both satellites and users. For satellites this includes PPP and ephemeris-based
+    placements; for users this includes PPP within latitude bands and alternative priors (e.g.\ clustered or mobility-aware
+    generators), without requiring changes to experiments or certificates.
+\end{itemize}
+
+\subsection{Planned v0.6: PRB Capacity and Congestion-Aware Outage}
+v0.6 introduces a minimal PRB abstraction to model capacity sharing and congestion while preserving the
+plug-and-play architecture: only the simulator and adapter are extended, and experiments/certificates continue
+to depend only on aggregated metrics (e.g.\ \texttt{outage\_rate}).
+\begin{itemize}
+    \item \textbf{v0.6.1 (PRB resource model)}: introduce a per-satellite PRB budget (e.g.\ $N_{\mathrm{prb}}$ PRBs) and
+    a deterministic mapping from link quality (SINR) to achievable per-PRB throughput (bps) for a user--satellite link.
+    \item \textbf{v0.6.2 (Scheduler)}: introduce a configurable PRB allocation policy (scheduler) that assigns PRBs to users
+    for each satellite and derives per-user throughput from the allocated PRBs. The scheduler must be a pluggable
+    simulator component selected via simulator configuration.
+    \item \textbf{v0.6.3 (Outage + dimensioning)}: compute per-user outage as failure of the throughput constraint under PRB
+    contention (not just visibility / SINR), expose \texttt{outage\_rate} via the adapter, and add an end-to-end dimensioning
+    test that searches for a feasible satellite intensity under an outage target.
 \end{itemize}
 
 \subsection{Ideas (Future versions)}

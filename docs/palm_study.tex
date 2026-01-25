@@ -1,14 +1,498 @@
 % This file is meant to be included from `docs/spec.tex` (as an appendix) via `\input{palm_study}`.
 % It intentionally contains no `\documentclass`, no preamble, and no `\begin{document}`.
 
-\section{Scope}
-This appendix will study Palm distributions and how they support rigorous reasoning about ``typical users'',
-``typical satellites'', and conditioning in point-process models.
+\section{Overview}
+This appendix will study Palm distributions and how they support rigorous reasoning about `typical users'',
+`typical satellites'', and conditioning in point-process models.
 
-\section{Outline}
+\noindent This appendix draws primarily on the tutorial by Coeurjolly, Møller, and Waagepetersen \cite{coeurjolly2017palm}.
+
+\subsection{Outline}
 \begin{itemize}
-    \item Motivation: why conditioning on a point matters in PPP models.
-    \item Intuition: ``typical point'' and local view of the process.
-    \item Definitions: Palm distribution / Palm expectation; Campbell and Mecke formulas.
-    \item Examples: PPP on $\mathbb{R}^d$; typical user vs.\ typical cell; link to outage/SINR modelling.
+\item Motivation: why conditioning on a point matters in PPP models.
+\item Intuition: ``typical point'' and local view of the process.
+\item Basic setup and notation: $S$ as the ambient measurable space; $X$ as a (finite or locally finite) point configuration;
+restriction $X_B := X \cap B$ as selecting points of $X$ inside a region/event $B \subseteq S$.
+\item Definitions: Palm distribution / Palm expectation; Campbell and Mecke formulas.
+\item Examples: PPP on $\mathbb{R}^d$; typical user vs.\ typical cell; link to outage/SINR modelling.
 \end{itemize}
+
+\section{Setup and notation}
+
+\subsection{Ambient space and measurability}
+
+\noindent\textbf{Topological space}: a set $S$ equipped with a notion of ``open sets'' (a topology) that makes it meaningful
+to talk about continuity and neighbourhoods. In this study we only work with $S\subseteq\mathbb{R}^d$ under the usual
+Euclidean topology.
+
+In this setting, we view a spatial point process $X$ as a random locally finite collection of points living in some ambient (uncountable) space
+$S$ (a Borel subset of $\mathbb{R}^d$ so that measurability is well-defined).
+
+
+\noindent\textbf{Borel subset (in $\mathbb{R}^d$)}: a set in the Borel $\sigma$-algebra (the smallest $\sigma$-algebra containing all open sets).
+\newline\textbf{Compact set (in $\mathbb{R}^d$)}: a set $K$ is compact iff it is closed and bounded.
+\newline\textbf{Local finiteness (point process)}: denoting $X_B = X\cap B$ the restriction of $X$ to a set $B\subseteq S$, and
+$N(B):=\lvert X_B\rvert$ the number of points of $X$ in $B$, local finiteness means that $N(B)<\infty$ almost surely whenever $B$ is bounded.
+
+\subsection{Restricting a configuration to a region}
+
+For any subset $B \subseteq S$,
+we write
+$$
+X_B := X \cap B
+$$
+to denote the \emph{restriction} of $X$ to $B$, meaning: keep only the points of $X$ that fall inside the region/event $B$.
+In plain terms, $B$ specifies the region (or event) we are interested in, and $X_B$ is the portion of the point configuration
+that lies in that region.
+
+\subsection{Example: expressing coverage as an event}
+
+\noindent\textbf{Example.}
+Fix a single simulation trial and \emph{condition on its realisations} of the satellite configuration and channel variables
+(e.g.\ fading). Given this fixed trial state, the service rule becomes a deterministic indicator function
+$s:S\to\{0,1\}$, where $s(x)=1$ means: ``a hypothetical user placed at location $x$ would be served in this trial''.
+This defines a \emph{served region}
+$$
+B := \{x\in S : s(x)=1\}.
+$$
+Now let $\mathcal{U}\subseteq S$ denote the (finite) set of realised user locations in this trial (i.e.\ one realisation of the
+user point process). Then $\mathcal{U}\cap B$ is the set of served users in this trial, and the empirical coverage fraction is
+$$
+\frac{|\mathcal{U}\cap B|}{|\mathcal{U}|}\qquad (\text{defined when }|\mathcal{U}|>0).
+$$
+
+To phrase this using \emph{events} and \emph{probabilities}, define a random user location $U_{\Omega}$ by sampling
+uniformly from the finite set of users in that trial:
+$$
+\mathbb{P}(U_{\Omega}=x)=\frac{1}{|\mathcal{U}|}\quad\text{for each }x\in \mathcal{U}\qquad (\text{defined when }|\mathcal{U}|>0).
+$$
+Define the \emph{coverage event}
+$$
+E := \{U_{\Omega}\in B\}.
+$$
+Then
+$$
+\mathbb{P}(E)=\mathbb{P}(U_{\Omega}\in B)=\frac{|\mathcal{U}\cap B|}{|\mathcal{U}|},
+$$
+which is the usual empirical coverage fraction for that trial. In a Monte Carlo study, repeating this across many trials
+lets us estimate distributions of coverage and related outage events under the full stochastic model.
+
+\section{Palm preliminaries}
+
+\subsection{Configuration space and local finiteness}
+
+\noindent\textbf{Motivation.}
+A Palm distribution is a probability law on \emph{point configurations} (it answers: ``what does the
+process look like when viewed from a typical point?''). To state this cleanly, we need a precise space of
+configurations and a precise notion of which subsets/observables are measurable.
+
+\noindent\textbf{Intuition.}
+A point configuration (one realised point pattern) $X$ is a (finite or infinite) set of points in $S$. The simplest observables
+are counts of points in a region, like ``how many points fall in this ball around the origin?''. These are always finite
+for bounded regions when the configuration is locally finite.
+
+\noindent\textbf{Definition. Configuration space.}
+We follow the notation of \cite{coeurjolly2017palm}.
+Let $\mathcal{B}(S)$ denote the Borel $\sigma$-algebra on $S$ (the smallest $\sigma$-algebra containing all open subsets of $S$).
+Define
+$$
+B_0 := \{B\in \mathcal{B}(S) : B \text{ is bounded}\},
+$$
+so $B_0$ is a \emph{family of sets} (a subcollection of $\mathcal{B}(S)$), not a new $\sigma$-algebra.
+
+A set is unbounded if it is not contained in any Euclidean ball of finite radius (it can extend arbitrarily far).
+
+\noindent\textbf{Why $B_0$ appears here:} we want a class of regions $B$ that are
+(i) \emph{measurable} (so statements like ``the number of points in $B$ equals $k$'' define valid events) and
+(ii) \emph{local} (bounded, so we are only looking at a finite neighbourhood).
+\newline In $\mathbb{R}^d$, the standard measurable sets are the Borel sets; we then restrict to the bounded ones to get $B_0$.
+\newline In plain terms: you can think of $B$ as a ball, box, or other bounded region of interest; the Borel condition 
+ensures it is a legitimate measurable event/region.
+
+Let $N$ be the configuration space, i.e.\ the set of all locally finite subsets $X\subseteq S$.
+Equivalently, $X\in N$ iff for every $B\in B_0$ the number of points of $X$ that fall inside $B$ is finite.
+That is, every configuration $X\in N$ has only finitely many points in every bounded Borel region $B\subseteq S$.
+
+
+Following the original notation, write $X_B := X\cap B$ for the restriction of a configuration $X$ to a region $B$.
+We then define $N(B)$ as the number of points of $X$ that fall inside $B$:
+$$
+N(B):=\lvert X_B\rvert=\lvert X\cap B\rvert.
+$$
+Here $|\cdot|$ denotes the number of elements in a finite set.
+Local finiteness means $N(B)<\infty$ for every bounded Borel region $B\in B_0$.
+This is the precise relationship: $B_0$ specifies the bounded regions we consider ``local'', and
+$N$ is the set of point patterns for which every such local region contains only finitely many points.
+
+\noindent\textbf{Example.}
+An element $X\in N$ is one concrete ``point pattern'' such as $X=\{x_1,x_2,x_3\}\subseteq S$ (a finite, hence
+locally finite, set of user locations). More generally, $X$ may be infinite, but local finiteness means that for any bounded
+region $B\in B_0$ the restricted set $X_B=X\cap B$ is finite (so $N(B)=|X_B|$ is well defined).
+
+\noindent\textbf{Example (bounded vs.\ unbounded $S$).}
+If $S$ itself is bounded, then every Borel subset of $S$ is bounded; local finiteness then implies
+every configuration $X\in N$ is actually finite. If $S=\mathbb{R}^d$, configurations may have infinitely many
+points overall, but still satisfy $N(B)<\infty$ (almost surely) for every bounded $B\in B_0$.
+
+\section{Poisson Processes as random configurations}
+
+\subsection{Palm motivation via ``typical user'' viewpoint}
+
+\noindent\textbf{Motivation.}
+The Poisson process is both a canonical model in its own right and the baseline reference point for Palm theory.
+In the satellite setting, it is natural to model \emph{random} user locations (and sometimes satellites) by Poisson point
+processes. What we care about is not one particular sampled configuration, but the QoS experienced by a \emph{typical
+user} under the stochastic model.
+
+\noindent\textbf{Example (``typical user QoS'' and where conditioning comes from).}
+In one Monte Carlo trial, we sample a random set of users and a random set of satellites (and any channel randomness such
+as fading). After sampling, the configuration is \emph{known} and the QoS of any specific user is a deterministic
+calculation.
+
+To learn about a \emph{typical} user, we repeat this experiment many times. In each trial we:
+\begin{enumerate}
+    \item sample the random world (users, satellites, channel randomness);
+    \item pick one user uniformly at random from the users that appeared in that trial; and
+    \item compute that user's QoS in that trial.
+\end{enumerate}
+Collecting those QoS values across trials gives an empirical distribution: ``QoS of a typical user''.
+
+Palm theory packages the same idea in a way that is convenient for analysis: instead of carrying around the random user
+location we picked, we \emph{recenter} the picture so the chosen user sits at the origin. Concretely, if the chosen user
+in a trial is at location $u\in S$, we translate coordinates by $-u$: the user becomes $0$, and every other point $z$
+becomes $z-u$. This does not change any physical distances or QoS quantities; it is just a bookkeeping trick that lets us
+describe ``the world as seen from the user'' without repeatedly writing ``relative to $u$''. Informally this is described
+as ``conditioning on a point at the origin''.
+(In continuous space, the literal event ``there is a user exactly at the origin'' has probability $0$, which is why Palm
+theory defines this idea carefully rather than using naive conditional probability.)
+
+\noindent\textbf{Intuition.}
+Fix a bounded region $B\in B_0$ (for example, a ball or box). One can think of $B$ as a ``local neighbourhood'' around the
+location of interest (for Palm, after recentering a typical user to the origin, this would be a neighbourhood around
+$0$). A Poisson process places a random number of points in $B$: the count $N(B)$ is Poisson distributed with mean
+$\alpha(B)=\int_B \rho(x)\,dx$. Once the count is fixed to be $n$, the $n$ points are scattered independently in $B$
+according to the spatial density. Disjoint regions behave independently, which is why Poisson processes are often
+described as having ``independent increments''.
+
+\subsection{Poisson distribution: simplest count model}
+
+\noindent\textbf{Definition.}
+A random variable $N$ taking values in $\{0,1,2,\dots\}$ has a Poisson distribution with mean $\lambda\ge 0$ (written
+$N\sim\mathrm{Poisson}(\lambda)$) if
+$$
+\mathbb{P}(N=n)=\exp\{-\lambda\}\frac{\lambda^n}{n!},\qquad n=0,1,2,\dots.
+$$
+To motivate this formula, think about counting ``random arrivals''.
+We want a model where:
+\begin{itemize}
+    \item arrivals are rare over very small time intervals, and
+    \item what happens in disjoint time intervals is (approximately) independent.
+\end{itemize}
+Under these assumptions, the total number of arrivals over a whole time window should be governed by one parameter: the
+average number of arrivals in that window, call it $\lambda$.
+
+Here is a simple \emph{thought experiment} that suggests why the closed form above is the right shape. Consider a time
+window $[0,T]$. Suppose arrivals occur at an (approximately) constant rate $r$ per unit time, so the expected number of
+arrivals in the whole window is
+$$
+\lambda \;=\; \int_0^T r\,dt \;=\; rT.
+$$
+Now split the window into $m$ equal sub-intervals of length $\Delta t := T/m$. When $\Delta t$ is very small
+(``infinitesimal''), it is natural to approximate each sub-interval as having either $0$ or $1$ arrival 
+(so a Binomial approximation is reasonable). A standard choice is to take the probability of at 
+least one arrival in a sub-interval to be
+$$
+p_m := 1-\exp\{-r\Delta t\},
+$$
+and to assume different sub-intervals behave independently. 
+
+\noindent\textbf{Bernoulli, Binomial:} a Bernoulli$(p)$ variable is a single yes/no trial (1 with
+probability $p$), while a Binomial$(m,p)$ variable is the sum of $m$ independent Bernoulli$(p)$ trials (the number of
+successes in $m$ yes/no trials).
+
+Then the total count is approximately a sum of $m$
+independent Bernoulli variables, i.e.\ $N\approx \mathrm{Binomial}(m,p_m)$.
+As we refine the partition ($m\to\infty$, so $\Delta t\to 0$) while keeping $\lambda=rT$ fixed, this Binomial count
+converges to $\exp\{-\lambda\}\lambda^n/n!$, which is termed the Poisson distribution.
+
+\noindent\textbf{Example (meteors).} Suppose we count meteors that hit the Earth in a single night. Meteor impacts are rare
+on the scale of seconds or minutes, and impacts far apart in time are approximately independent. A reasonable first model
+for the random number of impacts in a night is therefore a one-parameter count model with mean $\lambda$; the Poisson
+distribution is the standard choice in this setting.
+
+\noindent\textbf{Example (meteors over the Earth's surface).} We can make the same modelling choice in space. Fix a time
+window (say one night) and let $B$ be a region on the Earth's surface (for example, a circular neighbourhood around a
+city). Let $N(B)$ denote the number of meteor impacts whose ground location falls inside $B$ during that night. If we
+assume impacts are rare and roughly independent across disjoint surface patches, then $N(B)$ is naturally modelled as a
+Poisson count whose mean is proportional to the area of $B$ (larger regions catch more meteors on average).
+
+\noindent\textbf{Practical simulation recipe (users on Earth, satellites on an orbit).}
+This viewpoint matches how we would actually generate samples in a simulator.
+\begin{itemize}
+    \item \textbf{Users on an Earth patch:} choose a surface region $B$ on the Earth's surface (e.g.\ a latitude band, or a
+    circular patch around a city). Pick an average user density $\lambda$ (users per unit area). Compute the region area
+    $|B|$ (surface area), sample a user count $N\sim\mathrm{Poisson}(\lambda|B|)$, and then place $N$ users independently
+    and uniformly over $B$ (uniform with respect to surface area on the sphere).
+    \item \textbf{Satellites on a circular orbit:} fix a circular orbit (altitude and an orbital plane). Pick an average
+    linear density along the orbit (satellites per unit angle) or an expected count $\mu$ for the orbit. Sample a satellite
+    count $M\sim\mathrm{Poisson}(\mu)$, then sample $M$ angles independently and uniformly on $[0,2\pi)$ and map each angle
+    to a 3D satellite position on that circle.
+\end{itemize}
+These are concrete ``Poisson generators'': first sample a Poisson count, then sample independent point locations given the
+count.
+In this appendix, $N(B)$ will play the role of such a Poisson random variable: it is the random \emph{count} of points
+falling in the region $B$.
+
+\subsection{Poisson point process: random spatial configuration}
+
+\noindent\textbf{Definition. Poisson process with intensity function $\rho$.}
+We follow \cite{coeurjolly2017palm}.
+Let $\rho:S\to[0,\infty)$ be a \emph{locally integrable} function, meaning that for every $B\in B_0$,
+$$
+\alpha(B) := \int_B \rho(x)\,dx < \infty,
+$$
+where $dx$ denotes Lebesgue measure on $\mathbb{R}^d$ (restricted to $S$).
+
+\noindent\textbf{Note:} $\rho$ is an \emph{intensity density} (expected points per unit volume), so it does not integrate to $1$
+in general. Dividing by $\alpha(B)=\int_B\rho(x)\,dx$ normalises it to the \emph{probability density} $p_B$ that describes
+where points fall inside $B$ given that there are $n$ points in $B$.
+
+\noindent\textbf{Lebesgue measure (informal)}: the standard notion of $d$-dimensional ``volume'' on $\mathbb{R}^d$
+(length in $d{=}1$, area in $d{=}2$, volume in $d{=}3$).
+
+We say that a point process $X$ on $S$ is a \emph{Poisson process with intensity function $\rho$} if:
+\begin{itemize}
+    \item for every $B\in B_0$, the count $N(B)=|X\cap B|$ is Poisson distributed with mean $\alpha(B)$; and
+    \item conditional on $N(B)=n$, the $n$ points of $X_B=X\cap B$ are i.i.d.\ on $B$ with \emph{probability density}
+    $$p_B(x)=\frac{\rho(x)}{\alpha(B)},\qquad x\in B,$$
+    with respect to Lebesgue measure $dx$ (when $\alpha(B)>0$; if $\alpha(B)=0$ then $N(B)=0$ almost surely).
+\end{itemize}
+
+
+\subsection{Equivalent characterisation via expectation of functionals}
+
+\noindent\textbf{Equivalent characterisation (distribution of the restricted configuration).}
+The preceding definition is equivalent to the following statement: for any $B\in B_0$ and any nonnegative measurable
+function $h$ on the space of configurations contained in $B$ (i.e.\ $h$ maps a finite point set in $B$ to a number),
+$$
+\mathbb{E}\!\left[h(X_B)\right]
+=
+\sum_{n=0}^{\infty}
+\exp\{-\alpha(B)\}\frac{1}{n!}
+\int_{B}\cdots\int_{B}
+h(\{x_1,\ldots,x_n\})
+\prod_{i=1}^{n}\rho(x_i)\,dx_1\cdots dx_n,
+$$
+where the $n=0$ term is understood as $\exp\{-\alpha(B)\}h(\emptyset)$.
+
+\noindent\textbf{Explanation (how to read the formula).}
+The random object in this formula is $X_B=X\cap B$: it is the random set of points that happen to fall inside the region
+$B$. Even if the \emph{global} process $X$ may contain many points, $X_B$ is a random \emph{finite} configuration because
+$B$ is bounded.
+
+Why do we sum over $n=0,1,2,\dots$? Because the number of points in $B$, namely $N(B)$, is itself random. Sometimes there
+are $0$ points in $B$, sometimes $1$, sometimes $2$, and so on. The formula is just the law of total expectation, written
+by splitting into cases:
+$$
+\mathbb{E}[h(X_B)] \;=\; \sum_{n=0}^{\infty} \mathbb{P}(N(B)=n)\,\mathbb{E}[h(X_B)\mid N(B)=n].
+$$
+
+For a Poisson process, $\mathbb{P}(N(B)=n)=\exp\{-\alpha(B)\}\alpha(B)^n/n!$. The remaining question is: what is
+$\mathbb{E}[h(X_B)\mid N(B)=n]$? When $N(B)=n$, we have $n$ random point locations in $B$, so we average $h$ over all
+possible choices of $(x_1,\dots,x_n)\in B^n$. This is where the stacked integrals come from: $\int_B\cdots\int_B$ means
+``integrate once for each of the $n$ point coordinates'' (the $\cdots$ just repeats $\int_B$ $n$ times).
+
+If we write the conditional point-location density explicitly as
+$$
+p_B(x)=\frac{\rho(x)}{\alpha(B)},\qquad x\in B,
+$$
+then $\rho(x)=\alpha(B)\,p_B(x)$ for $x\in B$, so
+$$
+\prod_{i=1}^{n}\rho(x_i)\,dx_1\cdots dx_n
+=
+\alpha(B)^n\prod_{i=1}^{n}p_B(x_i)\,dx_1\cdots dx_n.
+$$
+This is why an explicit $\alpha(B)^n$ factor appears in the rewritten form below. With this substitution, the same
+identity can be written in a form with no ``$\cdots$'':
+$$
+\mathbb{E}[h(X_B)]
+=
+\sum_{n=0}^{\infty}\exp\{-\alpha(B)\}\frac{\alpha(B)^n}{n!}
+\int_{B^n} h(\{x_1,\ldots,x_n\})\prod_{i=1}^{n}p_B(x_i)\,dx_1\cdots dx_n,
+$$
+with the convention that the $n=0$ term is $\exp\{-\alpha(B)\}h(\emptyset)$.
+
+\noindent\textbf{Concrete example (expanding the stacked integrals).}
+To make the ``$\int_B\cdots\int_B$'' notation concrete, here are the first few cases.
+
+\noindent\textbf{Rule of thumb.} For $n=0$ there are no integrals (the configuration is empty), for $n=1$ there is one
+integral over $x_1\in B$, for $n=2$ there are two integrals over $(x_1,x_2)\in B\times B$, and so on. The overall
+expression then sums these contributions over all $n$ because the count $N(B)$ can be $0,1,2,\dots$.
+
+\noindent\textbf{Case $n=1$.} The stacked integral becomes a single integral:
+$$
+\int_B h(\{x_1\})\,\rho(x_1)\,dx_1.
+$$
+This averages $h$ over all possible locations $x_1\in B$ for the single point, weighted by $\rho$.
+
+\noindent\textbf{Case $n=2$.} The stacked integral becomes a double integral over $B\times B$:
+$$
+\int_B\int_B h(\{x_1,x_2\})\,\rho(x_1)\rho(x_2)\,dx_1\,dx_2.
+$$
+This averages $h$ over all possible pairs of point locations $(x_1,x_2)\in B^2$ (again weighted by $\rho$).
+The reason it is a double integral is simply that there are two independent point coordinates to integrate over.
+
+\noindent\textbf{Example (ordinary triple integral).}
+Consider the integral over the unit cube $[0,1]^3$:
+$$
+I=\int_0^1\int_0^1\int_0^1 (x+y+z)\,dx\,dy\,dz.
+$$
+When integrating with respect to $x$, the variables $y$ and $z$ are treated as fixed constants, so
+$$
+\int_0^1 (x+y+z)\,dx=\frac{1}{2}+y+z.
+$$
+Then we integrate the resulting expression over $y$ (treating $z$ as fixed), and finally over $z$:
+$$
+\int_0^1\left(\frac{1}{2}+y+z\right)\,dy = 1+z,
+\qquad
+\int_0^1 (1+z)\,dz=\frac{3}{2}.
+$$
+So $I=\frac{3}{2}$. This is the same bookkeeping idea as in the point-process formula: each integral integrates over one
+coordinate while holding the others fixed, and the order can be swapped under mild conditions.
+
+\noindent\textbf{Remark (measure-first definition).}
+The definition can be stated using only the \emph{intensity measure} $\alpha$:
+if $\alpha(B)>0$, then conditional on $N(B)=n$ the $n$ points are i.i.d.\ in $B$ with probability law
+$$
+\frac{\alpha(\,\cdot\,\cap B)}{\alpha(B)}.
+$$
+This ``measure-first'' view is useful when moving beyond Euclidean Lebesgue measure (e.g.\ to a curved surface where the
+reference measure is an area measure rather than $dx$).
+
+\noindent\textbf{Example.}
+\textbf{Homogeneous Poisson process on the plane.} Let $S=\mathbb{R}^2$ and $\rho(x)\equiv\lambda$ for a constant
+$\lambda>0$. Then $\alpha(B)=\lambda\,|B|$ where $|B|$ is the area of $B$, so $N(B)\sim\mathrm{Poisson}(\lambda|B|)$ and,
+conditional on $N(B)=n$, the $n$ points are i.i.d.\ uniformly distributed on $B$.
+
+\section{Finite point processes specified by a density}
+\subsection{Motivation: reweighting a reference Poisson process}
+
+\noindent\textbf{Motivation.}
+This subsection follows \cite{coeurjolly2017palm} and \textbf{assumes $S$ is bounded}. Under this assumption, any locally
+finite point process on $S$ produces a \emph{finite} point configuration almost surely, which makes it meaningful to work
+with an ordinary ``density'' on finite configurations (analogous to multivariate data).
+
+The Poisson process is a good first model, but it is often too simple. For example, if $X$ models user locations, a
+homogeneous Poisson process says users appear uniformly everywhere. In practice, demand tends to be \emph{clustered}:
+users concentrate around cities, transport hubs, and events.
+
+One way to model clustering is to define a point process that gives higher probability to ``city-like'' configurations and
+lower probability to ``uniform sprinkle'' configurations. A convenient way to do this---and the motivation of the next step
+in \cite{coeurjolly2017palm}---is to start from a very simple baseline generator $Z$ (typically a unit-rate Poisson process
+on a bounded region $S$), and then \emph{reweight} the probability of each configuration by a nonnegative function $f$.
+Intuitively:
+\begin{itemize}
+    \item If a configuration looks like ``many points near a few hotspots'', $f$ assigns it a larger weight.
+    \item If a configuration looks ``too uniform'' (or otherwise unrealistic), $f$ assigns it a smaller weight.
+\end{itemize}
+This is directly analogous to ordinary probability densities: instead of defining probabilities from scratch, we define a
+distribution by saying ``relative to a reference measure, outcomes are weighted by $f$''.
+
+The practical payoff is that probability calculations and prediction problems become familiar. For instance, if we observe
+the user configuration inside a region $B$ (say, inside a city boundary) and want to predict the remaining configuration
+outside $B$, the density formalism makes it natural to write down a conditional distribution for $X_{S\setminus B}$ given
+$X_B$, in the same spirit as conditional densities for multivariate data.
+
+\subsection{Intuition: a ``density on configurations'' is reweighting}
+The main idea is the same as in ordinary probability, except that the random object is not a real number or a vector but a
+\emph{finite point set}.
+
+In ordinary probability, one way to build a flexible distribution is to start from a simple reference distribution and then
+reweight outcomes: outcomes that look more plausible get a higher weight, and outcomes that look less plausible get a
+lower weight.
+
+Here the ``outcome'' is a finite point configuration $X\in N$ on a bounded space $S$. We choose a simple reference
+generator (the unit-rate Poisson process $Z$ on $S$), and then we specify a nonnegative weight $f(X)$ on configurations.
+Informally:
+\begin{itemize}
+    \item sample a candidate configuration $Z$ from the simple generator;
+    \item assign it a weight $f(Z)$ (high weight for ``city-like'' clustering, low weight for unrealistic patterns);
+    \item interpret $f$ as defining a new distribution over configurations.
+\end{itemize}
+The next subsection makes this precise in exactly the same way that a probability density is defined ``relative to'' a
+reference measure.
+
+\subsection{Definition: density with respect to a unit-rate Poisson reference}
+This subsection follows \cite{coeurjolly2017palm} (still under the assumption that $S$ is bounded).
+Let $Z$ denote a unit-rate Poisson process on $S$, i.e.\ a Poisson point process with constant intensity $\rho(u)=1$ for
+$u\in S$.
+
+\noindent\textbf{Definition (absolute continuity and density).}
+We say that the distribution of $X$ is absolutely continuous with respect to the distribution of $Z$ with density $f$ if
+for every nonnegative measurable functional $h$ on $N$,
+$$
+\mathbb{E}\,h(X)=\mathbb{E}\!\left[f(Z)\,h(Z)\right].
+$$
+You can read this as: ``to average $h$ under $X$, average $h$ under the simple generator $Z$, but reweight each sampled
+configuration $Z$ by $f(Z)$.'' In particular, taking $h\equiv 1$ forces the normalisation condition
+$$
+\mathbb{E}[f(Z)]=1,
+$$
+so $f$ really does define a probability law.
+
+\subsection{Example: city-weighted models and when plane vs sphere diverge}
+Our goal is to compare Palm distributions on flat and spherical surfaces when the process is \emph{not} necessarily a
+uniform Poisson process, but instead reflects heterogeneous demand (e.g.\ cities). The density formalism is a convenient
+way to express ``non-uniform'' models in a mathematically controlled way, and it also makes it clear where geometry enters.
+
+\noindent\textbf{Example model (cities).}
+Let $S$ be a bounded surface.
+For a spherical model, take $S$ to be the Earth's surface with radius $R$ (so $S$ is a sphere and ``volume'' means surface
+area). Let $d_S(\cdot,\cdot)$ denote geodesic distance on the sphere. A simple ``city'' intensity profile is a hotspot
+around a city centre $c\in S$, for example
+$$
+\rho_{\text{sphere}}(x)=\lambda_0+\lambda_c\exp\!\Bigl(-\frac{d_S(x,c)^2}{2\sigma^2}\Bigr),
+$$
+where $\lambda_0$ is background density, $\lambda_c$ is hotspot strength, and $\sigma$ is hotspot width.
+On the plane, the analogous model uses Euclidean distance $d_{\mathbb{R}^2}$:
+$$
+\rho_{\text{plane}}(x)=\lambda_0+\lambda_c\exp\!\Bigl(-\frac{d_{\mathbb{R}^2}(x,c)^2}{2\sigma^2}\Bigr).
+$$
+
+\noindent\textbf{Where divergence comes from (geometry of neighbourhoods).}
+Many Palm-based QoS questions are ``local'': they depend on the point pattern in a neighbourhood around a typical user.
+Even before introducing Palm formally, we can see the key geometric effect by looking at how expected \emph{counts} scale
+with neighbourhood size.
+
+Fix a radius $r$ (interpreted as a distance on the surface), and let $B_r(x)$ be the ball of radius $r$ around a point
+$x$ (geodesic ball on the sphere; Euclidean disk on the plane).
+For a locally smooth intensity, the expected number of points in $B_r(x)$ is approximately proportional to the area of
+that ball:
+$$
+\mathbb{E}[N(B_r(x))]\approx \rho(x)\cdot |B_r(x)|.
+$$
+On the plane, $|B_r|\;=\;\pi r^2$. On the sphere, the area of a geodesic ball is
+$$
+|B_r| \;=\; 2\pi R^2\bigl(1-\cos(r/R)\bigr),
+$$
+which agrees with $\pi r^2$ only when $r\ll R$.
+
+\noindent\textbf{A simple ``unacceptable divergence'' criterion.}
+One way to quantify when a planar approximation breaks down is to compare these areas.
+Define a relative area error
+$$
+\varepsilon(r) := \frac{\pi r^2 - 2\pi R^2(1-\cos(r/R))}{\pi r^2}.
+$$
+Using $\cos(r/R)\approx 1-\tfrac{1}{2}(r/R)^2+\tfrac{1}{24}(r/R)^4$ for small $r/R$, we get
+$$
+\varepsilon(r) \;\approx\; \frac{r^2}{12R^2}\qquad (r\ll R).
+$$
+If we declare a tolerance $\varepsilon_{\max}$ (say $1\%$), then a simple scale at which planar and spherical local
+neighbourhoods begin to differ by more than that tolerance is
+$$
+\frac{r}{R} \;\gtrsim\; \sqrt{12\,\varepsilon_{\max}}.
+$$
+This is not yet a Palm distribution comparison, but it captures the same underlying phenomenon: any Palm statistic that
+depends on ``who is within distance $r$ of a typical user'' will inherit the geometry of these neighbourhoods, so $r/R$ is
+the fundamental dimensionless parameter controlling when a planar model stops being a good approximation to a spherical
+one.

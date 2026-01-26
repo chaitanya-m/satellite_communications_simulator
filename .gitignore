@@ -18,6 +18,9 @@ docs/*.out
 docs/*.pdf
 docs/study/
 
+# Separate paper drafts (their own repo)
+papers/
+
 # Local LaTeX build artifacts (when compiling `docs/spec.tex` from repo root)
 spec.aux
 spec.log

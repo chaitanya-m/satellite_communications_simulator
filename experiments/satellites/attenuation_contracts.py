@@ -1,215 +1,178 @@
-"""Core contracts for the attenuation-outage experimental procedure.
+"""Contracts for model-comparison RB-dimensioning experiments.
 
-This module defines the typed data contracts used across the full workflow.
-The goal is to keep each stage small and testable by fixing clear inputs and
-outputs between stages.
-
-Contracts present:
-1) ``ExperimentConfig``
-   - Global run settings (population/sample sizes, MC draws, snapshots,
-     outage target, candidate RB budgets, base seed).
-   - Used to make runs reproducible and to centralize all knobs.
-
-2) ``Snapshot``
-   - One realization of active users and measurements:
-     user locations, user weights, measured shadowing values, and optional
-     latent ground truth (simulation-only).
-   - Produced by snapshot generation (procedure point (i)).
-   - Consumed by GPR update and label construction (points (ii)-(iii)).
-
-3) ``Posterior``
-   - GPR posterior of the shadowing field conditioned on data, represented as a
-     mean vector and covariance matrix on chosen evaluation locations.
-   - Produced by the GPR stage (point (ii)).
-   - Consumed by posterior Monte Carlo outage estimation (point (iv)).
-
-4) ``BudgetResult``
-   - Per-candidate-budget result for one snapshot:
-     observed overload label, model-predicted outage probability, and MC counts.
-   - Produced after points (iii)-(iv).
-   - Consumed by snapshot comparison/calibration and final dimensioning
-     decisions (points (v)-(vii)).
-   - Practical implication: after calibration across snapshots, these records
-     are used to choose the smallest RB budget whose predicted outage
-     probability is at or below the target epsilon.
-
-Why strict validation:
-- shape mismatches (e.g., different lengths for users/weights/measurements)
-  fail early;
-- probability/count constraints are enforced at object creation;
-- contract-level tests can be written before simulator details are implemented.
-
-How to use this interface in the full procedure:
-1) Set up ``ExperimentConfig``.
-   Choose your outage target (``outage_target_epsilon``), candidate RB budgets,
-   number of snapshots, and Monte Carlo draws.
-2) For each snapshot, create one ``Snapshot``.
-   Put in sampled user locations, user weights (to represent population users),
-   and measured shadowing values. In simulator runs, also keep the latent truth
-   for evaluation.
-3) Run the GPR update on that snapshot's measurements and store the output as
-   ``Posterior(mean, covariance)``.
-4) For each candidate RB budget, compute one ``BudgetResult``:
-   - observed overload label from the snapshot truth (0/1), and
-   - model-predicted outage probability from posterior Monte Carlo.
-5) Repeat across snapshots, then check calibration (
-   if the model predicts about 10% outage, observed overload should occur
-   about 10% of the time over many snapshots).
-6) Final decision: pick the smallest RB budget whose calibrated predicted
-   outage is at or below ``outage_target_epsilon``.
+This module supports the workflow:
+1) define common experiment settings (PPP intensity, outage target, budget grid);
+2) define a model set (uniform baseline + Gaussian parameterizations);
+3) run repeated trials per model and estimate outage curves;
+4) extract required budgets and compare deltas against the baseline.
 """
 
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Literal, Tuple
 
 
-UserLocation = Tuple[float, float]
-
-
-@dataclass(frozen=True)
-class Snapshot:
-    """One fixed snapshot used in points (i)-(v) of the procedure.
-
-    A snapshot contains:
-    - sampled active user locations (fixed inside this snapshot),
-    - per-user sample weights used to represent population users,
-    - noisy measurement values used for GPR conditioning,
-    - optional latent ground-truth log-shadowing values (simulation-only).
-    """
-
-    snapshot_id: int
-    user_locations_xy: Tuple[UserLocation, ...]
-    user_weights: Tuple[int, ...]
-    measurements_db: Tuple[float, ...]
-    latent_log_shadowing_truth: Tuple[float, ...] | None = None
-
-    def __post_init__(self) -> None:
-        n = len(self.user_locations_xy)
-        if self.snapshot_id < 0:
-            raise ValueError("snapshot_id must be non-negative")
-        if n == 0:
-            raise ValueError("snapshot must contain at least one user")
-        if len(self.user_weights) != n:
-            raise ValueError("user_weights length must match user_locations_xy")
-        if len(self.measurements_db) != n:
-            raise ValueError("measurements_db length must match user_locations_xy")
-        if any(w <= 0 for w in self.user_weights):
-            raise ValueError("all user_weights must be positive")
-        if self.latent_log_shadowing_truth is not None and len(self.latent_log_shadowing_truth) != n:
-            raise ValueError(
-                "latent_log_shadowing_truth length must match user_locations_xy"
-            )
-
-    @property
-    def sample_size(self) -> int:
-        return len(self.user_locations_xy)
-
-    @property
-    def represented_population_size(self) -> int:
-        return int(sum(self.user_weights))
+ModelKind = Literal["uniform", "gaussian"]
 
 
 @dataclass(frozen=True)
-class Posterior:
-    """Posterior field conditioned on measurements, on chosen evaluation points."""
+class GaussianParams:
+    """Parameterization for a Gaussian-field simulator variant."""
 
-    mean: Tuple[float, ...]
-    covariance: Tuple[Tuple[float, ...], ...]
+    mean_log: float
+    variance_log: float
+    corr_length: float
 
     def __post_init__(self) -> None:
-        n = len(self.mean)
-        if n == 0:
-            raise ValueError("posterior mean must be non-empty")
-        if len(self.covariance) != n:
-            raise ValueError("covariance must be square with size len(mean)")
-        for row in self.covariance:
-            if len(row) != n:
-                raise ValueError("covariance must be square with size len(mean)")
-
-    @property
-    def dimension(self) -> int:
-        return len(self.mean)
+        if self.variance_log <= 0.0:
+            raise ValueError("variance_log must be positive")
+        if self.corr_length <= 0.0:
+            raise ValueError("corr_length must be positive")
 
 
 @dataclass(frozen=True)
-class BudgetResult:
-    """Per-budget output for one snapshot.
+class UniformParams:
+    """Uniform baseline on log-shadowing, sampled independently per user."""
 
-    `observed_overload_label` is the realized binary label z(N_avail) from the
-    snapshot's latent ground truth. `predicted_outage_probability` is the model
-    estimate p_out(N_avail | y), typically computed via posterior Monte Carlo.
-    Across candidate budgets, these values support selecting the minimum
-    required budget that meets the specified outage target.
-    """
-
-    n_avail_rb: int
-    observed_overload_label: int
-    predicted_outage_probability: float
-    mc_draws: int
-    overloaded_draws: int
+    low_log: float
+    high_log: float
 
     def __post_init__(self) -> None:
-        if self.n_avail_rb <= 0:
-            raise ValueError("n_avail_rb must be positive")
-        if self.observed_overload_label not in (0, 1):
-            raise ValueError("observed_overload_label must be 0 or 1")
-        if not (0.0 <= self.predicted_outage_probability <= 1.0):
-            raise ValueError("predicted_outage_probability must be in [0, 1]")
-        if self.mc_draws <= 0:
-            raise ValueError("mc_draws must be positive")
-        if self.overloaded_draws < 0:
-            raise ValueError("overloaded_draws must be non-negative")
-        if self.overloaded_draws > self.mc_draws:
-            raise ValueError("overloaded_draws cannot exceed mc_draws")
+        if self.low_log >= self.high_log:
+            raise ValueError("uniform bounds must satisfy low_log < high_log")
+
+
+@dataclass(frozen=True)
+class ModelSpec:
+    """One simulator model used in the comparison set."""
+
+    model_id: str
+    kind: ModelKind
+    uniform: UniformParams | None = None
+    gaussian: GaussianParams | None = None
+
+    def __post_init__(self) -> None:
+        if not self.model_id:
+            raise ValueError("model_id must be non-empty")
+        if self.kind == "uniform":
+            if self.uniform is None:
+                raise ValueError("uniform model requires uniform params")
+            if self.gaussian is not None:
+                raise ValueError("uniform model must not include gaussian params")
+        elif self.kind == "gaussian":
+            if self.gaussian is None:
+                raise ValueError("gaussian model requires gaussian params")
+            if self.uniform is not None:
+                raise ValueError("gaussian model must not include uniform params")
+        else:
+            raise ValueError(f"unsupported kind: {self.kind}")
 
 
 @dataclass(frozen=True)
 class ExperimentConfig:
-    """Top-level configuration for attenuation outage experiments."""
+    """Top-level common settings for model-comparison experiments."""
 
-    n_population_users: int = 1_000_000
-    n_sample_users: int = 1_000
-    n_posterior_mc_draws: int = 2_000
-    n_snapshots: int = 200
-    outage_target_epsilon: float = 0.05
-    candidate_rb_budgets: Tuple[int, ...] = ()
+    ppp_intensity_lambda: float
+    outage_target_epsilon: float
+    candidate_rb_budgets: Tuple[int, ...]
+    n_trials: int
     base_seed: int = 0
+    models: Tuple[ModelSpec, ...] = ()
 
     def __post_init__(self) -> None:
-        if self.n_population_users <= 0:
-            raise ValueError("n_population_users must be positive")
-        if self.n_sample_users <= 0:
-            raise ValueError("n_sample_users must be positive")
-        if self.n_sample_users > self.n_population_users:
-            raise ValueError("n_sample_users cannot exceed n_population_users")
-        if self.n_posterior_mc_draws <= 0:
-            raise ValueError("n_posterior_mc_draws must be positive")
-        if self.n_snapshots <= 0:
-            raise ValueError("n_snapshots must be positive")
+        if self.ppp_intensity_lambda <= 0.0:
+            raise ValueError("ppp_intensity_lambda must be positive")
         if not (0.0 < self.outage_target_epsilon < 1.0):
             raise ValueError("outage_target_epsilon must be in (0, 1)")
+        if self.n_trials <= 0:
+            raise ValueError("n_trials must be positive")
         if self.base_seed < 0:
             raise ValueError("base_seed must be non-negative")
+        if len(self.candidate_rb_budgets) == 0:
+            raise ValueError("candidate_rb_budgets must be non-empty")
         if any(b <= 0 for b in self.candidate_rb_budgets):
             raise ValueError("all candidate_rb_budgets must be positive")
         if tuple(sorted(self.candidate_rb_budgets)) != self.candidate_rb_budgets:
             raise ValueError("candidate_rb_budgets must be sorted in non-decreasing order")
+        if len(self.models) == 0:
+            raise ValueError("models must be non-empty")
+        model_ids = [m.model_id for m in self.models]
+        if len(set(model_ids)) != len(model_ids):
+            raise ValueError("model_id values must be unique")
 
     def to_dict(self) -> Dict[str, Any]:
-        """Serialize to plain Python objects for logs/checkpointing."""
+        """Serialize to plain Python data for logs/checkpointing."""
         return asdict(self)
 
     @classmethod
     def from_dict(cls, payload: Dict[str, Any]) -> "ExperimentConfig":
-        """Deserialize from plain Python objects."""
+        """Deserialize from plain Python data."""
+        models: list[ModelSpec] = []
+        for m in payload["models"]:
+            uniform = UniformParams(**m["uniform"]) if m.get("uniform") else None
+            gaussian = GaussianParams(**m["gaussian"]) if m.get("gaussian") else None
+            models.append(
+                ModelSpec(
+                    model_id=str(m["model_id"]),
+                    kind=m["kind"],
+                    uniform=uniform,
+                    gaussian=gaussian,
+                )
+            )
         return cls(
-            n_population_users=int(payload["n_population_users"]),
-            n_sample_users=int(payload["n_sample_users"]),
-            n_posterior_mc_draws=int(payload["n_posterior_mc_draws"]),
-            n_snapshots=int(payload["n_snapshots"]),
+            ppp_intensity_lambda=float(payload["ppp_intensity_lambda"]),
             outage_target_epsilon=float(payload["outage_target_epsilon"]),
             candidate_rb_budgets=tuple(int(v) for v in payload["candidate_rb_budgets"]),
+            n_trials=int(payload["n_trials"]),
             base_seed=int(payload["base_seed"]),
+            models=tuple(models),
         )
+
+
+@dataclass(frozen=True)
+class ModelBudgetEstimate:
+    """Estimated outage curve and derived required budget for one model."""
+
+    model_id: str
+    outage_by_budget: Tuple[float, ...]
+    required_budget: int
+    n_trials: int
+
+    def __post_init__(self) -> None:
+        if not self.model_id:
+            raise ValueError("model_id must be non-empty")
+        if self.n_trials <= 0:
+            raise ValueError("n_trials must be positive")
+        if self.required_budget <= 0:
+            raise ValueError("required_budget must be positive")
+        if len(self.outage_by_budget) == 0:
+            raise ValueError("outage_by_budget must be non-empty")
+        if any((p < 0.0 or p > 1.0) for p in self.outage_by_budget):
+            raise ValueError("all outage probabilities must be in [0, 1]")
+
+
+@dataclass(frozen=True)
+class ComparisonResult:
+    """Aggregate model-comparison outputs for one experiment run."""
+
+    baseline_model_id: str
+    estimates: Tuple[ModelBudgetEstimate, ...]
+    delta_required_budget_vs_baseline: Tuple[Tuple[str, int], ...]
+
+    def __post_init__(self) -> None:
+        if not self.baseline_model_id:
+            raise ValueError("baseline_model_id must be non-empty")
+        if len(self.estimates) == 0:
+            raise ValueError("estimates must be non-empty")
+        ids = [e.model_id for e in self.estimates]
+        if len(set(ids)) != len(ids):
+            raise ValueError("estimate model_id values must be unique")
+        if self.baseline_model_id not in set(ids):
+            raise ValueError("baseline_model_id must exist in estimates")
+        seen_delta_ids: set[str] = set()
+        for model_id, _delta in self.delta_required_budget_vs_baseline:
+            if model_id in seen_delta_ids:
+                raise ValueError("delta entries must have unique model_id values")
+            seen_delta_ids.add(model_id)
+

@@ -1,5 +1,9 @@
 """Unit tests for PRB-demand mapping from log-shadowing inputs.
 
+Scope:
+- These tests validate PRB-demand mapping and aggregation behavior only.
+- They do not test shadowing-field generation or end-to-end outage loops.
+
 Convention used by these tests:
 - ``G = ln(S)`` where ``S`` is the multiplicative shadowing factor.
 - ``S < 1`` means attenuation (worse channel), so ``G`` is more negative.
@@ -32,6 +36,10 @@ def test_prb_demand_is_monotone_with_log_shadowing() -> None:
     dB example: changing shadowing from -20 dB to -10 dB means less loss.
     In linear scale, ``S`` goes from 0.01 to 0.1, so SNR increases by 10x.
     With higher SNR, each RB carries more bits, so PRB demand should not rise.
+
+    Checks performed:
+    - output PRB demand is monotone non-increasing as ``G`` increases,
+    - no shape/content errors on a valid 1D input vector.
     """
     params = PRBDemandParams(
         required_rate_bps=1_000_000.0,  # Per-user target data rate (bits/s).
@@ -52,6 +60,10 @@ def test_prb_demand_respects_min_and_max_caps() -> None:
 
     The output must be at least 1 PRB and at most ``max_prb_per_user`` implied
     by the ``eta_min`` floor.
+
+    Checks performed:
+    - severe attenuation path reaches the configured max cap,
+    - very favorable channel path reaches the minimum demand of 1 PRB.
     """
     params = PRBDemandParams(
         required_rate_bps=1_000_000.0,  # Per-user target data rate (bits/s).
@@ -68,7 +80,11 @@ def test_prb_demand_respects_min_and_max_caps() -> None:
 
 
 def test_total_prb_demand_without_weights() -> None:
-    """Check unweighted aggregation equals a simple integer sum."""
+    """Check unweighted aggregation equals a simple integer sum.
+
+    Checks performed:
+    - aggregate demand equals direct sum of per-user demands.
+    """
     # Per-user PRB demands for three users.
     assert total_prb_demand([2, 3, 5]) == 10
 
@@ -77,6 +93,9 @@ def test_total_prb_demand_with_weights() -> None:
     """Check weighted aggregation for sampled-user scaling.
 
     This models the case where one sampled user represents multiple real users.
+
+    Checks performed:
+    - weighted total equals dot product of per-user demands and weights.
     """
     # Two sampled users, each representing 1000 users in the population.
     assert total_prb_demand([2, 3], user_weights=[1000, 1000]) == 5000
@@ -87,6 +106,10 @@ def test_prb_demand_rejects_invalid_log_shadowing_shape() -> None:
 
     The demand map expects a non-empty 1D array-like input with one value
     per user.
+
+    Checks performed:
+    - non-1D arrays are rejected,
+    - empty vectors are rejected.
     """
     params = PRBDemandParams(
         required_rate_bps=1_000_000.0,  # Per-user target data rate (bits/s).
@@ -108,6 +131,10 @@ def test_total_prb_demand_rejects_invalid_weights() -> None:
     """Reject invalid weight vectors for weighted PRB aggregation.
 
     Weight vectors must be positive and match the per-user PRB array length.
+
+    Checks performed:
+    - mismatched vector lengths are rejected,
+    - non-positive weights are rejected.
     """
     # Invalid parameterization: number of weights does not match number of users.
     with pytest.raises(ValueError, match="length must match"):

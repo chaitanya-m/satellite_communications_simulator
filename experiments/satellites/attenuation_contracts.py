@@ -176,3 +176,109 @@ class ComparisonResult:
                 raise ValueError("delta entries must have unique model_id values")
             seen_delta_ids.add(model_id)
 
+
+@dataclass(frozen=True)
+class TruthAnchoredComparisonResult:
+    """Comparison outputs anchored to scenario-defined ground truth.
+
+    This contract is used when experiments include an explicit simulated
+    obstruction field treated as ground truth. Model-based required budgets are
+    then compared against the ground-truth required budget.
+    """
+
+    scenario_label: str
+    ground_truth_outage_by_budget: Tuple[float, ...]
+    ground_truth_required_budget: int
+    model_comparison: ComparisonResult
+    delta_required_budget_vs_truth: Tuple[Tuple[str, int], ...]
+
+    def __post_init__(self) -> None:
+        if not self.scenario_label:
+            raise ValueError("scenario_label must be non-empty")
+        if self.ground_truth_required_budget <= 0:
+            raise ValueError("ground_truth_required_budget must be positive")
+        if len(self.ground_truth_outage_by_budget) == 0:
+            raise ValueError("ground_truth_outage_by_budget must be non-empty")
+        if any((p < 0.0 or p > 1.0) for p in self.ground_truth_outage_by_budget):
+            raise ValueError("ground_truth_outage_by_budget values must be in [0, 1]")
+        seen_ids: set[str] = set()
+        for model_id, _delta in self.delta_required_budget_vs_truth:
+            if model_id in seen_ids:
+                raise ValueError("delta_required_budget_vs_truth must have unique model_id values")
+            seen_ids.add(model_id)
+
+
+@dataclass(frozen=True)
+class GaussianUniformTrialOutcome:
+    """One trial-level outcome for Gaussian-vs-uniform comparison.
+
+    This is the correct Bernoulli unit for the certificate:
+    one trial = one realized user PPP configuration under one scenario and seed.
+    The trial records which model gives the smaller absolute prediction error
+    against the true realized total demand for that instant.
+    """
+
+    scenario_label: str
+    base_seed: int
+    trial_index: int
+    true_total_demand: int
+    uniform_predicted_total_demand: float
+    gaussian_predicted_total_demand: float
+    uniform_abs_demand_error: float
+    gaussian_abs_demand_error: float
+    gaussian_better: bool
+    tie: bool
+
+    def __post_init__(self) -> None:
+        if not self.scenario_label:
+            raise ValueError("scenario_label must be non-empty")
+        if self.base_seed < 0:
+            raise ValueError("base_seed must be non-negative")
+        if self.trial_index < 0:
+            raise ValueError("trial_index must be non-negative")
+        if self.true_total_demand < 0:
+            raise ValueError("true_total_demand must be non-negative")
+        if self.uniform_abs_demand_error < 0.0:
+            raise ValueError("uniform_abs_demand_error must be non-negative")
+        if self.gaussian_abs_demand_error < 0.0:
+            raise ValueError("gaussian_abs_demand_error must be non-negative")
+
+
+@dataclass(frozen=True)
+class GaussianVsUniformCertificateResult:
+    """Certificate summary for the hypothesis: Gaussian beats uniform.
+
+    We model each trial as a Bernoulli success event:
+    success = 1 if Gaussian absolute demand-prediction error is strictly
+    smaller than uniform absolute demand-prediction error.
+    """
+
+    alpha: float
+    threshold: float
+    successes: int
+    trials: int
+    p_hat: float
+    lcb: float
+    certified: bool
+    ties: int
+    outcomes: Tuple[GaussianUniformTrialOutcome, ...]
+
+    def __post_init__(self) -> None:
+        if not (0.0 < self.alpha < 1.0):
+            raise ValueError("alpha must be in (0, 1)")
+        if not (0.0 < self.threshold < 1.0):
+            raise ValueError("threshold must be in (0, 1)")
+        if self.successes < 0:
+            raise ValueError("successes must be non-negative")
+        if self.trials < 0:
+            raise ValueError("trials must be non-negative")
+        if self.successes > self.trials:
+            raise ValueError("successes must be <= trials")
+        if self.ties < 0:
+            raise ValueError("ties must be non-negative")
+        if self.ties > self.trials:
+            raise ValueError("ties must be <= trials")
+        if not (0.0 <= self.p_hat <= 1.0):
+            raise ValueError("p_hat must be in [0, 1]")
+        if not (0.0 <= self.lcb <= 1.0):
+            raise ValueError("lcb must be in [0, 1]")

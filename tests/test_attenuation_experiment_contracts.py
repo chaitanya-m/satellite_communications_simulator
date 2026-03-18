@@ -8,8 +8,10 @@ from experiments.satellites.attenuation_contracts import (
     ComparisonResult,
     ExperimentConfig,
     GaussianParams,
+    GaussianVsUniformCertificateResult,
     ModelBudgetEstimate,
     ModelSpec,
+    TruthAnchoredComparisonResult,
     UniformParams,
 )
 
@@ -114,3 +116,45 @@ def test_uniform_params_ordering_constraint() -> None:
     with pytest.raises(ValueError, match="low_log < high_log"):
         UniformParams(low_log=1.0, high_log=1.0)
 
+
+def test_truth_anchored_result_validates_probability_bounds() -> None:
+    """TruthAnchoredComparisonResult should reject invalid ground-truth probabilities."""
+
+    comparison = ComparisonResult(
+        baseline_model_id="uniform_baseline",
+        estimates=(
+            ModelBudgetEstimate(
+                model_id="uniform_baseline",
+                outage_by_budget=(0.4, 0.2),
+                required_budget=100,
+                n_trials=20,
+            ),
+        ),
+        delta_required_budget_vs_baseline=(),
+    )
+
+    with pytest.raises(ValueError, match="in \\[0, 1\\]"):
+        TruthAnchoredComparisonResult(
+            scenario_label="square_center",
+            ground_truth_outage_by_budget=(0.2, 1.2),
+            ground_truth_required_budget=100,
+            model_comparison=comparison,
+            delta_required_budget_vs_truth=(("uniform_baseline", 0),),
+        )
+
+
+def test_gaussian_vs_uniform_certificate_validates_success_counts() -> None:
+    """GaussianVsUniformCertificateResult should reject invalid count relations."""
+
+    with pytest.raises(ValueError, match="successes must be <= trials"):
+        GaussianVsUniformCertificateResult(
+            alpha=0.05,
+            threshold=0.5,
+            successes=3,
+            trials=2,
+            p_hat=0.5,
+            lcb=0.4,
+            certified=False,
+            ties=0,
+            outcomes=(),
+        )

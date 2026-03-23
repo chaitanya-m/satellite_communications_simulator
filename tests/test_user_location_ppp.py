@@ -71,6 +71,35 @@ def test_sample_user_locations_ppp_points_stay_inside_beam() -> None:
         assert np.all(radii <= beam.radius + 1e-12)
 
 
+def test_sample_user_locations_ppp_is_uniform_over_beam_area() -> None:
+    """Sampled points should be consistent with uniform area density in a disk.
+
+    Why this test matters:
+    - Merely checking that points stay inside the beam is not enough.
+    - A buggy sampler could still place too many points near the center or near
+      the edge while remaining inside the disk.
+    - For a point drawn uniformly over a disk of radius ``R``, the normalized
+      squared radius ``r^2 / R^2`` is Uniform(0,1), so its mean should be 0.5.
+
+    Checks performed:
+    - over many sampled points, the empirical mean of ``r^2 / R^2`` is close
+      to 0.5, which is the correct uniform-area target.
+    """
+
+    beam = CircularBeam(x_center=0.0, y_center=0.0, radius=1.0)
+    pts = sample_user_locations_ppp(
+        lambda_intensity=10_000.0,
+        beam=beam,
+        rng=random.Random(12345),
+    )
+
+    assert pts.shape[0] > 0
+    dx = pts[:, 0] - beam.x_center
+    dy = pts[:, 1] - beam.y_center
+    normalized_squared_radius = (dx * dx + dy * dy) / (beam.radius * beam.radius)
+    assert abs(float(np.mean(normalized_squared_radius)) - 0.5) < 0.03
+
+
 def test_sample_user_locations_ppp_count_matches_poisson_draw_for_seed() -> None:
     """PPP count should match Poisson(lambda * area) under same RNG seed path.
 

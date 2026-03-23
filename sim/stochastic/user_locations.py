@@ -9,6 +9,14 @@ Model:
 - User count is Poisson with mean ``lambda_intensity * area``.
 - Conditional on count, user positions are iid uniform in that circle.
 
+Homogeneous-PPP note:
+- This construction is exact for a homogeneous spatial PPP.
+- One can either sample the PPP on the whole plane and keep only the points
+  that fall inside the beam, or directly sample a Poisson point count in the
+  beam and then place that many points iid uniformly in the beam.
+- Those two constructions give the same point-process distribution inside the
+  beam region.
+
 Why this exists:
 - Shadowing generators (uniform / Gaussian) require per-trial user locations.
 - End-to-end outage comparison loops need a single function that returns those
@@ -64,6 +72,13 @@ def sample_user_locations_ppp(
     Returns:
         NumPy array with shape ``(n_users, 2)``. Each row is one sampled user
         position ``[x, y]``.
+
+    Homogeneous-PPP note:
+        This function is exact only for a homogeneous spatial PPP. For that
+        model, "sample on the plane then crop to the beam" is equivalent to
+        "sample a Poisson count in the beam and then place that many points iid
+        uniformly in the beam". This function uses the second form because it
+        is simpler and more efficient on a bounded beam footprint.
 
     Why this is needed:
         The comparison experiments repeatedly require fresh user positions per

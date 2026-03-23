@@ -9,10 +9,26 @@ Supported obstruction patterns:
 - multiple circles (union of several high-loss disks).
 
 All patterns apply an additive *loss magnitude* in dB inside obstructed regions.
-Because PRB mapping uses natural-log shadowing ``G = ln(S)``, dB loss is
-converted to a negative shift in ``G`` using:
+The obstruction strength is therefore specified in the familiar dB scale, but
+the PRB-demand code uses the natural-log shadowing variable ``G = ln(S)``,
+where ``S`` is the multiplicative attenuation factor on linear scale.
+
+So we convert dB loss into a shift in ``G`` as follows:
+- if an obstruction adds ``L`` dB of loss, then the linear attenuation factor is
+  ``S = 10^(-L/10)``;
+- the simulator stores shadowing as ``G = ln(S)``;
+- therefore
+
+      G = ln(10^(-L/10)) = -(ln(10)/10) L.
+
+This means a positive dB loss becomes a negative shift in ``G``:
 
     delta_log = -(ln(10)/10) * extra_loss_db
+
+Interpretation:
+- larger ``extra_loss_db`` means smaller ``S``,
+- smaller ``S`` means more negative ``G``,
+- more negative ``G`` means a worse channel and usually higher PRB demand.
 """
 
 from __future__ import annotations
@@ -26,12 +42,31 @@ import numpy as np
 from sim.stochastic.user_locations import CircularBeam
 
 
+# ``Literal[...]`` documents that only these exact string labels are intended
+# here. Editors and static-analysis tools can use that information, but Python
+# does not enforce it automatically at runtime. Runtime checking still happens
+# later in ``evaluate_obstruction_log_shadowing`` when the label is matched to a
+# specific obstruction geometry and unsupported values raise ``ValueError``.
 PatternKind = Literal["square_center", "vertical_bands", "multi_circles"]
 
 
 @dataclass(frozen=True)
 class ObstructionFieldSpec:
     """Specification of one deterministic obstruction-field scenario.
+
+    Pattern overview:
+    - ``square_center``:
+        One axis-aligned square centered at the beam center. Users inside that
+        square receive extra loss; users outside it do not. The square size is
+        chosen through ``square_area_fraction`` relative to total beam area.
+    - ``vertical_bands``:
+        The beam diameter is split into vertical strips from left to right
+        using the x-coordinate. Alternate strips are obstructed, creating a
+        barcode-like pattern across the beam.
+    - ``multi_circles``:
+        One obstructed circle is placed at the beam center and the remaining
+        circles are placed evenly in angle around a ring centered on the beam
+        center. The obstructed region is the union of all of those circles.
 
     Fields:
         pattern_kind:
@@ -49,12 +84,14 @@ class ObstructionFieldSpec:
             beam diameter. Obstruction is applied to alternating bands.
         multi_circle_count:
             For ``multi_circles`` pattern only. Number of obstructed circles.
-            One circle is placed at center; remaining circles are placed on a
-            ring around center.
+            One circle is always placed at the beam center. If the count is
+            greater than one, the remaining circles are placed evenly in angle
+            on a ring around the center.
         multi_circle_radius_ratio:
-            Circle radius as a fraction of beam radius.
+            Radius of each obstructed circle as a fraction of beam radius.
         multi_circle_ring_ratio:
-            Ring radius (for non-central circles) as a fraction of beam radius.
+            Radius of the placement ring for non-central circles, expressed as
+            a fraction of beam radius.
     """
 
     pattern_kind: PatternKind
@@ -216,4 +253,3 @@ def _mask_multi_circles(
         dy = y - cy
         mask |= (dx * dx + dy * dy) <= (circle_radius * circle_radius)
     return mask
-

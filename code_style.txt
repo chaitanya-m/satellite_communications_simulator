@@ -1,0 +1,249 @@
+Code Style For Docstrings And Comments
+======================================
+
+Purpose
+-------
+This file captures the documentation and comment style to follow across this
+repository. The aim is not merely to satisfy linting or style preferences. The
+aim is to make the code understandable to a careful reader without needing to
+ask an LLM or reverse-engineer the experiment logic from implementation alone.
+
+The examples to imitate are the well-documented files already reviewed in this
+repository, such as:
+- `sim/stochastic/user_locations.py`
+- `sim/stochastic/obstruction_field.py`
+- `sim/stochastic/shadowing.py`
+- `sim/prb_demand.py`
+- the associated test files
+
+
+Core Principles
+---------------
+1. Explain the "why", not only the "what".
+   A docstring should state why the object exists and what experiment role it
+   plays, not just restate the function name.
+
+2. Write for a technically careful reader who may not know the local notation.
+   Do not assume that terms like "marginal variance", "correlation length",
+   "baseline SNR", "trial-level Bernoulli unit", or "Literal type" are already
+   understood.
+
+3. Put the plain-language explanation before or alongside the mathematical
+   notation.
+   If a formula appears, explain in words what it means and why it is being
+   used.
+
+4. Distinguish clearly between:
+   - model inputs/configuration,
+   - budget-level outputs,
+   - trial-level outputs,
+   - helper implementation details.
+
+5. Comments must reduce cognitive load.
+   A comment should help the reader understand a non-obvious step, convention,
+   assumption, or implication. Do not add comments that merely paraphrase the
+   next line of code.
+
+6. Be explicit about statistical meaning.
+   If code is about trials, probabilities, Bernoulli outcomes, seeds, or
+   aggregation, say exactly what the statistical unit is.
+
+7. Prefer precise, domain-specific wording over vague abstractions.
+   Say "user positions in a circular beam" rather than "samples in a domain"
+   when that is what the code actually means.
+
+
+Module Docstrings
+-----------------
+Every non-trivial module should begin with a module docstring that covers:
+
+1. Scope.
+   State what the module is responsible for and what it is not responsible for.
+
+2. Model or workflow assumptions.
+   Example:
+   - homogeneous spatial PPP,
+   - deterministic obstruction field,
+   - Gaussian field sampler,
+   - PRB mapping under a specific shadowing convention.
+
+3. Why the module exists in the experiment pipeline.
+   Example:
+   - "This module provides the primitive for sampling one PPP user geometry."
+   - "This module defines deterministic ground-truth obstruction patterns."
+
+4. Important notation or unit conventions.
+   Example:
+   - `G = ln(S)`
+   - dB loss versus natural-log attenuation
+   - "lambda_intensity is per unit area, not a total count"
+
+5. If there is a common source of confusion, address it in the module
+   docstring directly.
+   Example:
+   - explain why "sample on the plane and crop" is equivalent to
+     "Poisson count plus iid uniform placement" for a homogeneous PPP
+
+
+Class Docstrings
+----------------
+Class docstrings should explain:
+
+1. What the class represents in the experiment.
+2. Why a dedicated object exists instead of using loose dictionaries.
+3. What the important fields mean in plain language.
+4. Any separation-of-concerns point that a reviewer must understand.
+
+For data contracts, say what statistical object the contract corresponds to.
+Examples:
+- one model specification
+- one budget-level comparison summary
+- one trial-level outcome for a certificate
+
+For parameter objects, explain each field in plain terms and with experiment
+implications when helpful.
+
+
+Function Docstrings
+-------------------
+Use structured function docstrings for all non-trivial functions. Prefer the
+following pattern when it fits:
+
+1. One-line summary.
+2. Short explanation of what role the function plays.
+3. `Args:` section.
+4. `Returns:` section.
+5. One or more of the following when useful:
+   - `Why this is needed:`
+   - `Interpretation:`
+   - `Homogeneous-PPP note:`
+   - `Experiment implication:`
+   - `Important distinction:`
+   - `Current runner behavior:`
+
+The docstring should answer:
+- What does this function do?
+- Why does it do it this way?
+- What assumptions make it valid?
+- What does the result mean in the experiment?
+
+
+Mathematical Explanations
+-------------------------
+Whenever formulas appear, explain them in plain words.
+
+Preferred style:
+1. State the physical or probabilistic quantity first.
+2. Then give the formula.
+3. Then explain the implication.
+
+Example pattern:
+- "If an obstruction adds `L` dB of loss, the multiplicative attenuation factor
+  is `10^(-L/10)`."
+- "Because the code stores shadowing as `G = ln(S)`, this becomes a negative
+  shift in `G`."
+- "Therefore larger dB loss means more negative `G`, a worse channel, and
+  usually higher PRB demand."
+
+Do not drop formulas into docstrings without motivation.
+
+
+Inline Comments
+---------------
+Inline comments should usually appear:
+
+1. Before a validation block.
+   Explain what invariant is being enforced.
+
+2. Before a transformation whose correctness is not obvious.
+   Example:
+   - why `radius = R * sqrt(U)` is needed for uniform density over a disk
+   - why a dB quantity is converted into a negative shift in log scale
+
+3. Before a loop or code block implementing an experiment step.
+   Example:
+   - "Sample trial user locations once and reuse across truth and all models."
+   - "Compute true realized total demand from the obstruction field."
+
+4. Before a choice of statistical aggregation.
+   Example:
+   - "The Bernoulli unit is one trial."
+   - "Do not aggregate raw RB totals across independent trials."
+
+Avoid:
+- obvious line-by-line narration
+- comments that simply rename variables in prose
+- comments that are more vague than the code itself
+
+
+Terminology Rules
+-----------------
+1. Use "user position" or "user location" when referring to rows of a sampled
+   spatial array.
+
+2. Use "spatial axis" when explaining array columns such as `x,y` or `x,y,z`.
+
+3. Be explicit about whether a quantity is:
+   - per user,
+   - per location,
+   - per trial,
+   - per budget,
+   - per experiment,
+   - aggregated across scenarios or seeds.
+
+4. Avoid overloaded or ambiguous wording such as:
+   - "output layer" when the object is actually an input/config
+   - "ground truth" when you mean "one realized field draw" unless that is
+     actually what the code uses
+
+5. When Python typing features such as `Literal[...]` are used, explain them in
+   Python terms:
+   - static/documentation aid,
+   - not automatic runtime enforcement,
+   - runtime checks happen elsewhere if applicable.
+
+
+Tests
+-----
+Test files should also be documented clearly.
+
+Module docstring:
+- state scope
+- state out-of-scope items
+
+Each test docstring should say:
+1. what behavior is being checked
+2. why the behavior matters
+3. a short "Checks performed:" block when helpful
+
+Use tests to document statistical or geometric meaning, not only to assert
+values.
+
+Examples of useful test explanations:
+- why a PPP count should match a Poisson draw under the same seed path
+- why `r^2 / R^2` should average to `0.5` for uniform disk sampling
+- why a tie in a certificate should count as non-success or be excluded
+
+
+Tone And Formatting
+-------------------
+1. Use plain English.
+2. Be concise but not terse.
+3. Prefer short paragraphs and bullet lists for multi-step explanations.
+4. Keep comments and docstrings factual.
+5. Avoid decorative language, filler, or motivational prose.
+6. Use ASCII only unless the file already clearly requires something else.
+
+
+Review Standard
+---------------
+Before considering a new file "well documented", ask:
+
+1. Can a reviewer understand what statistical object this code is working with?
+2. Can a reviewer understand why the implementation is correct?
+3. Can a reviewer understand what assumptions make the code valid?
+4. Can a reviewer distinguish this file's role from neighboring files?
+5. Could a technically careful reader follow the code without needing to ask
+   for hidden context?
+
+If the answer to any of these is "no", improve the docstrings or comments.

@@ -1,4 +1,22 @@
-"""Smoke tests for truth-anchored attenuation model comparison runs."""
+"""Smoke tests for attenuation-comparison experiment runners.
+
+Scope:
+- Validate that the runner functions return coherent objects in small,
+  fast-to-execute regimes.
+- Validate reproducibility and basic counting logic.
+
+Out of scope:
+- Establishing a research result.
+- Running a study-scale configuration with hundreds of expected users.
+- Proving that Gaussian should beat uniform under a particular scientific
+  hypothesis.
+
+Why this file exists:
+- These tests are intentionally small so they can run quickly in the regular
+  test suite.
+- The more reader-facing explanation of the intended experimental procedure now
+  lives in ``tests/test_research_hypotheses.py``.
+"""
 
 from __future__ import annotations
 
@@ -23,7 +41,23 @@ def _is_non_increasing(values: tuple[float, ...]) -> bool:
 
 
 def test_truth_anchored_comparison_smoke_run_outputs_consistent_shapes() -> None:
-    """A small end-to-end run should produce coherent typed outputs."""
+    """A small truth-anchored run should produce coherent typed outputs.
+
+    Why this matters:
+    - the truth-anchored runner combines PPP sampling, truth-side obstruction
+      evaluation, model-side simulation, budget-level aggregation, and typed
+      result assembly;
+    - this smoke test checks that those pieces fit together coherently in a
+      small regime.
+
+    Checks performed:
+    - truth-side outage vector length matches the tested budget grid;
+    - truth-side outage values lie in ``[0, 1]`` and are non-increasing in
+      budget;
+    - truth-side required budget lies on the tested grid;
+    - each model estimate has the same structural properties;
+    - the model-vs-truth delta entries contain the expected model ids.
+    """
 
     config = ExperimentConfig(
         ppp_intensity_lambda=2.0,
@@ -82,7 +116,16 @@ def test_truth_anchored_comparison_smoke_run_outputs_consistent_shapes() -> None
 
 
 def test_truth_anchored_comparison_is_reproducible_for_same_seed() -> None:
-    """Same experiment settings and base seed should reproduce identical result."""
+    """Same settings and base seed should reproduce identical truth-side output.
+
+    Why this matters:
+    - the experiment runners are stochastic, so reproducibility under fixed
+      seeds is essential for debugging and for preserving study artifacts.
+
+    Checks performed:
+    - running the truth-anchored runner twice with identical inputs yields
+      identical result objects.
+    """
 
     config = ExperimentConfig(
         ppp_intensity_lambda=1.5,
@@ -133,7 +176,18 @@ def test_truth_anchored_comparison_is_reproducible_for_same_seed() -> None:
 
 
 def test_certify_gaussian_better_from_error_pairs_success_case() -> None:
-    """Certificate helper should mark successful evidence when Gaussian wins often."""
+    """Certificate helper should count trial-level wins correctly.
+
+    Why this matters:
+    - this helper is the smallest piece of the certificate logic, so it is the
+      easiest place to verify the Bernoulli counting rules directly.
+
+    Checks performed:
+    - strict Gaussian wins are counted as successes;
+    - with ``tie_policy="uniform_wins"``, a tie counts as a non-success;
+    - the empirical success rate ``p_hat`` is computed correctly;
+    - one trial-level outcome object is emitted per supplied error pair.
+    """
 
     result = certify_gaussian_better_from_error_pairs(
         error_pairs=((5, 2), (3, 1), (7, 4), (4, 4)),
@@ -152,7 +206,22 @@ def test_certify_gaussian_better_from_error_pairs_success_case() -> None:
 
 
 def test_run_gaussian_vs_uniform_certificate_smoke() -> None:
-    """Run a small trial-level certificate and validate output consistency."""
+    """Run a small certificate configuration and validate output consistency.
+
+    Why this matters:
+    - the certificate runner has a different statistical meaning from the
+      budget-level runners: its Bernoulli unit is one PPP trial rather than one
+      budget-grid summary;
+    - this smoke test checks the pooling logic across scenarios, seeds, and
+      trials in a small regime.
+
+    Checks performed:
+    - the number of returned trial outcomes matches
+      scenarios x seeds x trials;
+    - certificate summary fields stay in valid numeric ranges;
+    - returned trial-level outcome objects contain sensible non-negative
+      demand/error fields.
+    """
 
     config = ExperimentConfig(
         ppp_intensity_lambda=2.0,

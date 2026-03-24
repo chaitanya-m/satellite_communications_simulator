@@ -1,10 +1,42 @@
 """Contracts for model-comparison RB-dimensioning experiments.
 
-This module supports the workflow:
-1) define common experiment settings (PPP intensity, outage target, budget grid);
-2) define a model set (uniform baseline + Gaussian parameterizations);
-3) run repeated trials per model and estimate outage curves;
-4) extract required budgets and compare deltas against the baseline.
+This file fixes the data interfaces used by the attenuation-study workflow so
+that the simulator, experiment runner, and downstream analysis all agree on
+what statistical object is being passed around.
+
+This file defines three kinds of experiment objects:
+
+1. Model/configuration inputs:
+   These describe which stochastic models are being compared and under what
+   common experiment settings they are run. For example, the Gaussian field
+   parameters and the target outage level are part of this layer.
+
+2. Budget-level comparison outputs:
+   These summarize repeated trials through outage-by-budget vectors and derived
+   required budgets. They are used for the dimensioning-style question:
+   "what RB budget would this model choose at the target outage?"
+
+3. Trial-level certificate outputs:
+   Each independent trial is treated as one Bernoulli comparison between
+   Gaussian and uniform, based on which model predicts the realized total
+   demand more accurately on that trial.
+
+Keeping these object types separate is important so budget-level summaries are
+not confused with trial-level certificate logic.
+
+A repeated-trial dimensioning run with 250 trials should produce one
+``ComparisonResult``-style budget summary object, where the 250 trials are
+aggregated into outage estimates over the tested RB budget grid.
+
+Those same 250 trials can also contribute 250 trial-level Bernoulli comparison
+outcomes for the Gaussian-versus-uniform certificate, where each trial asks
+which model predicted the realized total demand more accurately for that trial.
+
+A ``GaussianVsUniformCertificateResult`` then summarizes whatever collection of
+independent trial outcomes is supplied to the certificate procedure. That
+collection may be broader than a single repeated-trial block, depending on how
+calling code assembles the certificate inputs. The runner-specific details for
+that assembly belong in the experiment-runner docstrings rather than here.
 """
 
 from __future__ import annotations
@@ -18,7 +50,18 @@ ModelKind = Literal["uniform", "gaussian"]
 
 @dataclass(frozen=True)
 class GaussianParams:
-    """Parameterization for a Gaussian-field simulator variant."""
+    """Parameterization for one Gaussian-field simulator variant.
+
+    These parameters describe the stochastic field model used by the Gaussian
+    simulator branch:
+    - ``mean_log`` sets the average natural-log shadowing level,
+    - ``variance_log`` sets how strongly the field fluctuates around that mean,
+    - ``corr_length`` sets the distance scale over which nearby user locations
+      tend to experience similar shadowing.
+
+    This object does not perform any simulation itself; it is just the typed
+    parameter bundle consumed later by the Gaussian shadowing sampler.
+    """
 
     mean_log: float
     variance_log: float
@@ -33,7 +76,13 @@ class GaussianParams:
 
 @dataclass(frozen=True)
 class UniformParams:
-    """Uniform baseline on log-shadowing, sampled independently per user."""
+    """Uniform baseline on log-shadowing, sampled independently per user.
+
+    This is the simple comparison model. It ignores spatial correlation and
+    treats each user's log-shadowing value as an iid draw from a fixed interval.
+    That makes it a useful baseline when asking whether explicitly modeling a
+    Gaussian field improves prediction or dimensioning.
+    """
 
     low_log: float
     high_log: float
@@ -45,7 +94,17 @@ class UniformParams:
 
 @dataclass(frozen=True)
 class ModelSpec:
-    """One simulator model used in the comparison set."""
+    """One simulator model used in the comparison set.
+
+    ``ModelSpec`` is a small tagged union:
+    - ``kind="uniform"`` means the model must carry ``UniformParams`` only;
+    - ``kind="gaussian"`` means the model must carry ``GaussianParams`` only.
+
+    Why this exists:
+    - experiment runners should not need to inspect ad hoc dictionaries;
+    - the choice of model family and its parameterization should be explicit;
+    - invalid combinations should fail immediately when the object is created.
+    """
 
     model_id: str
     kind: ModelKind
@@ -71,7 +130,31 @@ class ModelSpec:
 
 @dataclass(frozen=True)
 class ExperimentConfig:
-    """Top-level common settings for model-comparison experiments."""
+    """Top-level common settings for model-comparison experiments.
+
+    This object holds the settings shared across all compared models in one
+    experiment run.
+
+    Interpretation of the main fields:
+    - ``ppp_intensity_lambda``:
+      user intensity per unit area for the homogeneous spatial PPP, not a fixed
+      user count.
+    - ``outage_target_epsilon``:
+      target overload probability used when converting an outage estimate into a
+      required RB budget.
+    - ``candidate_rb_budgets``:
+      discrete budget grid on which outage is evaluated. Required budgets are
+      selected from this grid, so coarse grids produce coarse results.
+    - ``n_trials``:
+      number of independent PPP realizations used in a repeated-trial
+      experiment.
+    - ``base_seed``:
+      master seed controlling reproducibility of the full run.
+
+    This contract is shared by both:
+    - the budget-level comparison workflow, and
+    - the trial-level Gaussian-vs-uniform certificate workflow.
+    """
 
     ppp_intensity_lambda: float
     outage_target_epsilon: float
@@ -132,7 +215,18 @@ class ExperimentConfig:
 
 @dataclass(frozen=True)
 class ModelBudgetEstimate:
-    """Estimated outage curve and derived required budget for one model."""
+    """Estimated outage curve and derived required budget for one model.
+
+    This is a budget-level summary object.
+
+    It answers:
+    - what outage probability was estimated at each tested RB budget?
+    - after looking across that grid, which budget was selected as the required
+      one for the chosen target outage?
+
+    It does not store trial-level demand realizations. Those belong to the
+    certificate workflow and are handled by separate contracts below.
+    """
 
     model_id: str
     outage_by_budget: Tuple[float, ...]
@@ -154,7 +248,16 @@ class ModelBudgetEstimate:
 
 @dataclass(frozen=True)
 class ComparisonResult:
-    """Aggregate model-comparison outputs for one experiment run."""
+    """Aggregate budget-level comparison outputs for one experiment run.
+
+    This object groups several ``ModelBudgetEstimate`` records obtained under a
+    shared ``ExperimentConfig`` and records their required-budget differences
+    relative to one designated baseline model.
+
+    It is the natural output for the question:
+    "under this experiment setup, how do the compared models differ in the RB
+    budget they would recommend?"
+    """
 
     baseline_model_id: str
     estimates: Tuple[ModelBudgetEstimate, ...]
@@ -184,6 +287,18 @@ class TruthAnchoredComparisonResult:
     This contract is used when experiments include an explicit simulated
     obstruction field treated as ground truth. Model-based required budgets are
     then compared against the ground-truth required budget.
+
+    Statistical role:
+    - ``ground_truth_outage_by_budget`` and ``ground_truth_required_budget``
+      come from the scenario-defined truth branch;
+    - ``model_comparison`` contains the corresponding model-side budget
+      summaries;
+    - ``delta_required_budget_vs_truth`` records how far each model's selected
+      budget is above or below the truth-side selected budget.
+
+    This is still a budget-level object. It is about dimensioning outcomes on a
+    tested budget grid. It is not the same as the trial-level certificate that
+    asks whether Gaussian predicts realized demand better than uniform.
     """
 
     scenario_label: str
@@ -216,6 +331,25 @@ class GaussianUniformTrialOutcome:
     one trial = one realized user PPP configuration under one scenario and seed.
     The trial records which model gives the smaller absolute prediction error
     against the true realized total demand for that instant.
+
+    Why this object is important:
+    - it prevents accidental aggregation of raw RB totals across independent
+      trials;
+    - it makes the Bernoulli unit explicit;
+    - it stores enough information to audit why a trial counted as a Gaussian
+      win, a uniform win, or a tie.
+
+    Interpretation:
+    - ``true_total_demand`` is the realized demand from the ground-truth
+      obstruction scenario for that trial's user geometry;
+    - ``uniform_predicted_total_demand`` and
+      ``gaussian_predicted_total_demand`` are model-based predicted demands for
+      that same geometry;
+    - ``uniform_abs_demand_error`` and ``gaussian_abs_demand_error`` are the
+      absolute prediction errors against truth;
+    - ``gaussian_better`` is true exactly when the Gaussian absolute error is
+      strictly smaller;
+    - ``tie`` marks equal absolute errors.
     """
 
     scenario_label: str
@@ -251,6 +385,21 @@ class GaussianVsUniformCertificateResult:
     We model each trial as a Bernoulli success event:
     success = 1 if Gaussian absolute demand-prediction error is strictly
     smaller than uniform absolute demand-prediction error.
+
+    This object therefore summarizes a trial-level prediction-accuracy study,
+    not directly a required-budget study.
+
+    Main fields:
+    - ``successes`` / ``trials`` define the empirical success rate ``p_hat``;
+    - ``lcb`` is a one-sided lower confidence bound on that success
+      probability;
+    - ``certified`` records whether that lower bound exceeds the chosen
+      threshold (typically 0.5);
+    - ``outcomes`` stores the underlying trial-level comparison records.
+
+    In plain terms, this contract answers:
+    "do we have statistically supported evidence that Gaussian predicts
+    realized total demand more accurately than uniform on independent trials?"
     """
 
     alpha: float

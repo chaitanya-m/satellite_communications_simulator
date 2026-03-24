@@ -1,4 +1,19 @@
-"""Tests for model-comparison attenuation experiment contracts."""
+"""Tests for model-comparison attenuation experiment contracts.
+
+Scope:
+- Validate that the typed experiment contracts reject malformed inputs early.
+- Validate that configuration objects preserve their meaning when serialized and
+  deserialized.
+- Validate the distinction between budget-level result objects and the
+  trial-level Gaussian-versus-uniform certificate objects.
+
+Out of scope:
+- PPP sampling.
+- Obstruction geometry.
+- Shadowing-field simulation.
+- PRB-demand mapping.
+- End-to-end experiment-runner behavior.
+"""
 
 from __future__ import annotations
 
@@ -17,7 +32,18 @@ from experiments.satellites.attenuation_contracts import (
 
 
 def test_experiment_config_round_trip() -> None:
-    """ExperimentConfig should round-trip through dict serialization."""
+    """ExperimentConfig should round-trip through plain-Python serialization.
+
+    Why this matters:
+    - experiment configurations are likely to be logged, checkpointed, or
+      passed between scripts;
+    - a round-trip should preserve the statistical meaning of the run, not just
+      the field names.
+
+    Checks performed:
+    - a populated ``ExperimentConfig`` converts to a plain dict;
+    - reconstructing from that dict yields an object equal to the original.
+    """
     cfg = ExperimentConfig(
         ppp_intensity_lambda=1_000.0,
         outage_target_epsilon=0.05,
@@ -44,7 +70,19 @@ def test_experiment_config_round_trip() -> None:
 
 
 def test_model_spec_requires_matching_params() -> None:
-    """ModelSpec should enforce kind/parameter compatibility."""
+    """ModelSpec should enforce kind/parameter compatibility.
+
+    Why this matters:
+    - ``ModelSpec`` is a tagged union, so its ``kind`` field must agree with
+      the attached parameter object;
+    - invalid combinations should fail immediately instead of leaking into the
+      runner logic.
+
+    Checks performed:
+    - ``kind="uniform"`` without ``UniformParams`` is rejected;
+    - ``kind="gaussian"`` without ``GaussianParams`` is rejected;
+    - a uniform model carrying Gaussian parameters is rejected.
+    """
     with pytest.raises(ValueError, match="requires uniform"):
         ModelSpec(model_id="u", kind="uniform")
 
@@ -61,7 +99,16 @@ def test_model_spec_requires_matching_params() -> None:
 
 
 def test_experiment_config_rejects_duplicate_model_ids() -> None:
-    """ExperimentConfig should require unique model identifiers."""
+    """ExperimentConfig should require unique model identifiers.
+
+    Why this matters:
+    - model ids are used later to match estimates, baselines, and deltas;
+    - duplicate ids would make downstream comparison objects ambiguous.
+    - example failure: gaussian and uniform models accidentally sharing the same id
+
+    Checks performed:
+    - repeated ``model_id`` values raise ``ValueError``.
+    """
     with pytest.raises(ValueError, match="unique"):
         ExperimentConfig(
             ppp_intensity_lambda=100.0,
@@ -84,7 +131,16 @@ def test_experiment_config_rejects_duplicate_model_ids() -> None:
 
 
 def test_model_budget_estimate_validates_probability_bounds() -> None:
-    """ModelBudgetEstimate should reject invalid outage values."""
+    """ModelBudgetEstimate should reject invalid outage values.
+
+    Why this matters:
+    - ``ModelBudgetEstimate`` is a budget-level summary object;
+    - its ``outage_by_budget`` entries are probabilities and therefore must
+      stay within ``[0, 1]``.
+
+    Checks performed:
+    - an outage value above 1 is rejected.
+    """
     with pytest.raises(ValueError, match="in \\[0, 1\\]"):
         ModelBudgetEstimate(
             model_id="uniform_baseline",
@@ -95,7 +151,15 @@ def test_model_budget_estimate_validates_probability_bounds() -> None:
 
 
 def test_comparison_result_requires_baseline_in_estimates() -> None:
-    """ComparisonResult baseline id should appear in estimates."""
+    """ComparisonResult baseline id should appear in estimates.
+
+    Why this matters:
+    - baseline-relative budget deltas only make sense if the baseline estimate
+      is actually present in the comparison set.
+
+    Checks performed:
+    - a result without a baseline estimate is rejected
+    """
     with pytest.raises(ValueError, match="must exist"):
         ComparisonResult(
             baseline_model_id="uniform_baseline",
@@ -112,13 +176,34 @@ def test_comparison_result_requires_baseline_in_estimates() -> None:
 
 
 def test_uniform_params_ordering_constraint() -> None:
-    """UniformParams should enforce strict lower/upper bound ordering."""
+    """UniformParams should enforce strict lower/upper bound ordering.
+
+    Why this matters:
+    - the uniform baseline uses a closed interval on log-shadowing;
+    - if the lower bound is not strictly below the upper bound, the parameter
+      object does not describe a valid sampling interval.
+    - correct usage example: UniformParams(low_log=-1.0, high_log=1.0), which means 
+    sampling from [10^-1, 10^1] = [0.1, 10]., where the low_log and high_log are the
+    attenuation factors in log10 scale.
+
+    Checks performed:
+    - equal lower and upper bounds are rejected.
+    """
     with pytest.raises(ValueError, match="low_log < high_log"):
         UniformParams(low_log=1.0, high_log=1.0)
 
 
 def test_truth_anchored_result_validates_probability_bounds() -> None:
-    """TruthAnchoredComparisonResult should reject invalid ground-truth probabilities."""
+    """TruthAnchoredComparisonResult should reject invalid truth probabilities.
+
+    Why this matters:
+    - ``TruthAnchoredComparisonResult`` is still a budget-level object;
+    - its ground-truth side stores outage probabilities over a tested budget
+      grid, so those values must remain in ``[0, 1]``.
+
+    Checks performed:
+    - a ground-truth outage value above 1 is rejected.
+    """
 
     comparison = ComparisonResult(
         baseline_model_id="uniform_baseline",
@@ -144,7 +229,17 @@ def test_truth_anchored_result_validates_probability_bounds() -> None:
 
 
 def test_gaussian_vs_uniform_certificate_validates_success_counts() -> None:
-    """GaussianVsUniformCertificateResult should reject invalid count relations."""
+    """GaussianVsUniformCertificateResult should reject invalid count relations.
+
+    Why this matters:
+    - the certificate summary stores Bernoulli counts aggregated from many
+      trial-level comparison outcomes;
+    - those counts must obey basic consistency rules before any statistical
+      interpretation is possible.
+
+    Checks performed:
+    - ``successes > trials`` is rejected.
+    """
 
     with pytest.raises(ValueError, match="successes must be <= trials"):
         GaussianVsUniformCertificateResult(

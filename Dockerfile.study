@@ -1,0 +1,19 @@
+FROM python:3.13-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONHASHSEED=0 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /workspace
+
+# Install only the Python packages needed to run the research-hypothesis test.
+RUN python -m pip install --upgrade pip \
+    && python -m pip install numpy==2.4.1 pytest==9.0.2
+
+# Copy the repository into the image so the container can run even without a
+# bind mount. In compose usage below, the host checkout is mounted back on top
+# so end users see results.txt on their machine.
+COPY . /workspace
+
+CMD ["./docker/run_research_hypotheses.sh"]

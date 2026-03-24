@@ -30,3 +30,4 @@ spec.pdf
 
 # Top-level shell scripts
 /*.sh
+!/run_study_docker.sh

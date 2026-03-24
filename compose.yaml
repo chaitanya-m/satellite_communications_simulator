@@ -1,0 +1,16 @@
+services:
+  study:
+    build:
+      context: .
+      dockerfile: Dockerfile.study
+    image: satsim-study:latest
+    working_dir: /workspace
+    volumes:
+      # Mount the checkout so the generated results.txt lands on the host.
+      - .:/workspace
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+      PYTHONHASHSEED: "0"
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    command: ["./docker/run_research_hypotheses.sh"]

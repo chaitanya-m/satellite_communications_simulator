@@ -6,7 +6,7 @@ services:
     image: satsim-study:latest
     working_dir: /workspace
     volumes:
-      # Mount the checkout so the generated results.txt lands on the host.
+      # Mount the checkout so the generated result files land on the host.
       - .:/workspace
     environment:
       PYTHONDONTWRITEBYTECODE: "1"

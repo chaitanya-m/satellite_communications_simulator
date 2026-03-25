@@ -9,6 +9,8 @@ __pycache__/
 .venv/
 
 # Experiment outputs
+result_summary.txt
+result_table.txt
 results.txt
 
 # Docs

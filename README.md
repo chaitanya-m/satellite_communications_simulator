@@ -1,15 +1,16 @@
 # Satellite Attenuation Study
 
 This repository contains the current `study`-branch workflow for running the
-attenuation research experiment and writing a structured result summary to
-`results.txt`.
+attenuation research experiment and writing:
+- a structured summary to `result_summary.txt`;
+- a raw output table to `result_table.txt`.
 
 The intended path is:
 - install Docker Desktop;
 - open Terminal;
 - run one command from the repository root;
 - wait for the study to finish;
-- read `results.txt`.
+- read `result_summary.txt` and `result_table.txt`.
 
 ## What This Run Does
 
@@ -21,8 +22,9 @@ tests/test_research_hypotheses.py
 
 That test:
 - runs the current research-scale attenuation experiment;
-- writes a structured summary to `results.txt`;
-- prints the same results to the terminal.
+- writes a structured summary to `result_summary.txt`;
+- writes raw output tables to `result_table.txt`;
+- prints the summary to the terminal.
 
 No local Python setup is required if you use Docker.
 
@@ -85,8 +87,9 @@ Recommended command:
 What this command does:
 - builds the Docker image if needed;
 - runs the research study inside the container;
-- writes `results.txt` back into the repository on your Mac;
-- prints the result file to the terminal;
+- writes `result_summary.txt` and `result_table.txt` back into the repository
+  on your Mac;
+- prints the summary file to the terminal;
 - stops the container when the run is complete.
 
 The first run may take a few minutes because Docker has to build the image.
@@ -99,25 +102,29 @@ this form:
 
 ```text
 2 passed in ...
-[study] results written to /workspace/results.txt
+[study] summary written to /workspace/result_summary.txt
+[study] raw table written to /workspace/result_table.txt
 ```
 
-On your Mac, the generated file will be:
+On your Mac, the generated files will be:
 
 ```text
-results.txt
+result_summary.txt
+result_table.txt
 ```
 
 You can inspect it with:
 
 ```bash
-cat results.txt
+cat result_summary.txt
+cat result_table.txt
 ```
 
 or open it in VS Code:
 
 ```bash
-code results.txt
+code result_summary.txt
+code result_table.txt
 ```
 
 ## Standard Docker Compose Alternative
@@ -132,7 +139,7 @@ This runs the same study service defined in `compose.yaml`.
 
 ## Expected Result Sections
 
-`results.txt` is written in a stable sectioned format:
+`result_summary.txt` is written in a stable sectioned format:
 
 ```text
 [experiment]
@@ -142,8 +149,15 @@ This runs the same study service defined in `compose.yaml`.
 [scenario.multi_circles]
 ```
 
-This structure is intentional so future experiments can extend the file in a
-consistent way.
+`result_table.txt` contains the corresponding raw outputs, including:
+
+```text
+[trial_level_certificate_rows]
+[seed_level_dimensioning_rows]
+```
+
+These structures are intentional so future experiments can extend the files in
+a consistent way.
 
 ## Troubleshooting
 
@@ -195,6 +209,6 @@ installs container dependencies before the test runs.
 
 ## Notes
 
-- `results.txt` is intentionally ignored by Git.
+- `result_summary.txt` and `result_table.txt` are intentionally ignored by Git.
 - The Docker workflow was verified on the `study` branch before writing this
   README.

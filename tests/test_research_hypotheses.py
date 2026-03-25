@@ -88,14 +88,20 @@ from sim.stochastic.obstruction_field import ObstructionFieldSpec
 from sim.stochastic.user_locations import CircularBeam
 
 
-def _results_path() -> Path:
-    """Return the root-level results file used by research-hypothesis tests."""
+def _summary_path() -> Path:
+    """Return the root-level summary file used by research-hypothesis tests."""
 
-    return Path(__file__).resolve().parents[1] / "results.txt"
+    return Path(__file__).resolve().parents[1] / "result_summary.txt"
+
+
+def _table_path() -> Path:
+    """Return the root-level raw table file used by research-hypothesis tests."""
+
+    return Path(__file__).resolve().parents[1] / "result_table.txt"
 
 
 def _format_float(value: float) -> str:
-    """Format floats in a stable human-readable form for results.txt."""
+    """Format floats in a stable human-readable form for result files."""
 
     return f"{value:.10f}"
 
@@ -110,8 +116,9 @@ def _write_research_results(
     prediction_draws_per_trial: int,
     pooled_certificate,
     per_scenario_lines: list[str],
+    raw_table_lines: list[str],
 ) -> None:
-    """Write one structured research-result snapshot to ``results.txt``.
+    """Write one structured research-result snapshot to summary and raw tables.
 
     Why this helper exists:
     - research-hypothesis tests should not only pass or fail; they should also
@@ -121,10 +128,12 @@ def _write_research_results(
       their result-reporting logic stay together.
 
     Current policy:
-    - overwrite ``results.txt`` with the latest deterministic snapshot from this
-      research file;
-    - use a stable sectioned plain-text format so future experiments can add
-      more sections without losing readability.
+    - overwrite ``result_summary.txt`` with the latest deterministic aggregate
+      snapshot from this research file;
+    - overwrite ``result_table.txt`` with the corresponding raw outputs from
+      the same seeded run;
+    - use stable sectioned plain-text formats so future experiments can add
+      more sections and columns without losing readability.
     """
 
     expected_users = config.ppp_intensity_lambda * beam.area
@@ -154,7 +163,8 @@ def _write_research_results(
         "",
     ]
     lines.extend(per_scenario_lines)
-    _results_path().write_text("\n".join(lines) + "\n")
+    _summary_path().write_text("\n".join(lines) + "\n")
+    _table_path().write_text("\n".join(raw_table_lines) + "\n")
 
 
 def _research_scale_setup() -> tuple[
@@ -298,7 +308,7 @@ def test_research_scale_certificate_runs_across_multiple_scenarios() -> None:
     - the number of Bernoulli outcomes matches scenarios x seeds x trials;
     - the certificate summary fields are internally coherent;
     - all requested scenario labels appear in the returned trial outcomes;
-    - the same run writes a structured research snapshot to ``results.txt``.
+    - the same run writes both a structured summary snapshot and raw tables.
     """
 
     config, beam, prb_params, scenarios, base_seeds = _research_scale_setup()
@@ -326,10 +336,47 @@ def test_research_scale_certificate_runs_across_multiple_scenarios() -> None:
     scenario_labels = {outcome.scenario_label for outcome in cert.outcomes}
     assert scenario_labels == {"square_center", "vertical_bands", "multi_circles"}
 
+    raw_table_lines: list[str] = [
+        "[trial_level_certificate_rows]",
+        (
+            "scenario_label,base_seed,trial_index,true_total_demand,"
+            "uniform_predicted_total_demand,gaussian_predicted_total_demand,"
+            "uniform_abs_demand_error,gaussian_abs_demand_error,"
+            "gaussian_better,tie"
+        ),
+    ]
+    for outcome in cert.outcomes:
+        raw_table_lines.append(
+            ",".join(
+                [
+                    outcome.scenario_label,
+                    str(outcome.base_seed),
+                    str(outcome.trial_index),
+                    str(outcome.true_total_demand),
+                    _format_float(outcome.uniform_predicted_total_demand),
+                    _format_float(outcome.gaussian_predicted_total_demand),
+                    _format_float(outcome.uniform_abs_demand_error),
+                    _format_float(outcome.gaussian_abs_demand_error),
+                    str(outcome.gaussian_better),
+                    str(outcome.tie),
+                ]
+            )
+        )
+    raw_table_lines.append("")
+
     # Derive one per-scenario certificate summary from the pooled trial
     # outcomes, without rerunning the experiment. This keeps the reporting
     # deterministic and avoids duplicate computation.
     per_scenario_lines: list[str] = []
+    raw_table_lines.extend(
+        [
+            "[seed_level_dimensioning_rows]",
+            (
+                "scenario_label,base_seed,truth_required_budget,"
+                "uniform_required_budget,gaussian_required_budget"
+            ),
+        ]
+    )
     for scenario_label in sorted(scenario_labels):
         scenario_outcomes = tuple(
             outcome for outcome in cert.outcomes if outcome.scenario_label == scenario_label
@@ -367,6 +414,42 @@ def test_research_scale_certificate_runs_across_multiple_scenarios() -> None:
             ]
         )
 
+    scenarios_by_label = {scenario.pattern_kind: scenario for scenario in scenarios}
+    for scenario_label in sorted(scenario_labels):
+        scenario = scenarios_by_label[scenario_label]
+        for seed in base_seeds:
+            seed_config = ExperimentConfig(
+                ppp_intensity_lambda=config.ppp_intensity_lambda,
+                outage_target_epsilon=config.outage_target_epsilon,
+                candidate_rb_budgets=config.candidate_rb_budgets,
+                n_trials=config.n_trials,
+                base_seed=int(seed),
+                models=config.models,
+            )
+            dimensioning_result = run_truth_anchored_attenuation_comparison(
+                config=seed_config,
+                beam=beam,
+                prb_params=prb_params,
+                ground_truth_spec=scenario,
+                scenario_label=scenario_label,
+            )
+            budgets_by_model = {
+                estimate.model_id: estimate.required_budget
+                for estimate in dimensioning_result.model_comparison.estimates
+            }
+            raw_table_lines.append(
+                ",".join(
+                    [
+                        scenario_label,
+                        str(seed),
+                        str(dimensioning_result.ground_truth_required_budget),
+                        str(budgets_by_model["uniform_baseline"]),
+                        str(budgets_by_model["gaussian_l1"]),
+                    ]
+                )
+            )
+    raw_table_lines.append("")
+
     _write_research_results(
         experiment_name="research_scale_v1",
         config=config,
@@ -376,10 +459,14 @@ def test_research_scale_certificate_runs_across_multiple_scenarios() -> None:
         prediction_draws_per_trial=10,
         pooled_certificate=cert,
         per_scenario_lines=per_scenario_lines,
+        raw_table_lines=raw_table_lines,
     )
 
-    results_text = _results_path().read_text()
-    assert "[pooled_certificate]" in results_text
-    assert "[scenario.square_center]" in results_text
-    assert "[scenario.vertical_bands]" in results_text
-    assert "[scenario.multi_circles]" in results_text
+    summary_text = _summary_path().read_text()
+    table_text = _table_path().read_text()
+    assert "[pooled_certificate]" in summary_text
+    assert "[scenario.square_center]" in summary_text
+    assert "[scenario.vertical_bands]" in summary_text
+    assert "[scenario.multi_circles]" in summary_text
+    assert "[trial_level_certificate_rows]" in table_text
+    assert "[seed_level_dimensioning_rows]" in table_text

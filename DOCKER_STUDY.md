@@ -12,8 +12,9 @@ research-hypothesis study with one command.
 What it does:
 - builds the study image if needed;
 - runs `tests/test_research_hypotheses.py` inside the container;
-- writes `results.txt` back into the repo on the host;
-- prints the contents of `results.txt`;
+- writes `result_summary.txt` and `result_table.txt` back into the repo on the
+  host;
+- prints the contents of `result_summary.txt`;
 - tears the container down when finished.
 
 ## Standard Docker Compose
@@ -29,7 +30,8 @@ This runs the same workflow through the `study` service in `compose.yaml`.
 After the container finishes, the main artifact is:
 
 ```text
-results.txt
+result_summary.txt
+result_table.txt
 ```
 
-That file is already listed in `.gitignore`.
+Both files are already listed in `.gitignore`.

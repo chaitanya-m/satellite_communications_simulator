@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Pass the host uid/gid through to compose so results.txt is owned by the
-# invoking user rather than root.
+# Pass the host uid/gid through to compose so generated result files are owned
+# by the invoking user rather than root.
 export HOST_UID="$(id -u)"
 export HOST_GID="$(id -g)"
 

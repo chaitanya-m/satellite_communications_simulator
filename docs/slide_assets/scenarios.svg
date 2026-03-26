@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700">
+  <rect width="1200" height="700" fill="#faf8f2"/>
+  <g font-family="Helvetica, Arial, sans-serif" fill="#1f2a2e">
+    <text x="200" y="100" text-anchor="middle" font-size="34">Centered square</text>
+    <text x="600" y="100" text-anchor="middle" font-size="34">Vertical bands</text>
+    <text x="1000" y="100" text-anchor="middle" font-size="34">Multiple circles</text>
+  </g>
+  <circle cx="200" cy="350" r="170" fill="#f2efe5" stroke="#1f2a2e" stroke-width="4"/>
+  <rect x="120" y="270" width="160" height="160" fill="#d97757" fill-opacity="0.45" stroke="#d97757" stroke-width="4"/>
+
+  <circle cx="600" cy="350" r="170" fill="#f2efe5" stroke="#1f2a2e" stroke-width="4"/>
+  <rect x="450" y="180" width="60" height="340" fill="#d97757" fill-opacity="0.35"/>
+  <rect x="570" y="180" width="60" height="340" fill="#d97757" fill-opacity="0.35"/>
+  <rect x="690" y="180" width="60" height="340" fill="#d97757" fill-opacity="0.35"/>
+
+  <circle cx="1000" cy="350" r="170" fill="#f2efe5" stroke="#1f2a2e" stroke-width="4"/>
+  <circle cx="1000" cy="350" r="62" fill="#d97757" fill-opacity="0.40" stroke="#d97757" stroke-width="3"/>
+  <circle cx="920" cy="290" r="56" fill="#d97757" fill-opacity="0.40" stroke="#d97757" stroke-width="3"/>
+  <circle cx="1080" cy="290" r="56" fill="#d97757" fill-opacity="0.40" stroke="#d97757" stroke-width="3"/>
+  <circle cx="1000" cy="450" r="56" fill="#d97757" fill-opacity="0.40" stroke="#d97757" stroke-width="3"/>
+
+  <g fill="#1f2a2e">
+    <circle cx="120" cy="340" r="7"/><circle cx="205" cy="210" r="7"/><circle cx="290" cy="295" r="7"/><circle cx="245" cy="455" r="7"/><circle cx="110" cy="410" r="7"/>
+    <circle cx="505" cy="330" r="7"/><circle cx="560" cy="240" r="7"/><circle cx="690" cy="230" r="7"/><circle cx="720" cy="360" r="7"/><circle cx="615" cy="470" r="7"/>
+    <circle cx="920" cy="230" r="7"/><circle cx="1060" cy="245" r="7"/><circle cx="1085" cy="360" r="7"/><circle cx="950" cy="470" r="7"/><circle cx="1000" cy="350" r="7"/>
+  </g>
+</svg>

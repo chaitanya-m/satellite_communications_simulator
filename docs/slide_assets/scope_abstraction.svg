@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700">
+  <rect width="1200" height="700" fill="#faf8f2"/>
+  <rect x="80" y="120" width="450" height="440" rx="24" ry="24" fill="#f5ddd6" stroke="#7f4030" stroke-width="4"/>
+  <rect x="670" y="120" width="450" height="440" rx="24" ry="24" fill="#ddebdc" stroke="#2f5d50" stroke-width="4"/>
+  <text x="305" y="175" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="34" fill="#7f4030">Full telecom reality</text>
+  <text x="895" y="175" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="34" fill="#2f5d50">This study</text>
+
+  <g font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#4a2420">
+    <text x="125" y="240">• geometry + link budget</text>
+    <text x="125" y="290">• pathloss</text>
+    <text x="125" y="340">• shadowing</text>
+    <text x="125" y="390">• fading</text>
+    <text x="125" y="440">• modulation / coding</text>
+    <text x="125" y="490">• scheduler details</text>
+    <text x="125" y="540">• implementation effects</text>
+  </g>
+
+  <g font-family="Helvetica, Arial, sans-serif" font-size="25" fill="#173f37">
+    <text x="705" y="240">• user positions in the beam</text>
+    <text x="705" y="295">• spatial attenuation structure</text>
+    <text x="705" y="350">• attenuation → SNR</text>
+    <text x="705" y="405">• SNR → PRBs per user</text>
+    <text x="705" y="460">• aggregate beam demand</text>
+  </g>
+
+  <text x="600" y="635" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="28" fill="#1f2a2e">Purpose built for a study without extraneous bloat elements.</text>
+</svg>

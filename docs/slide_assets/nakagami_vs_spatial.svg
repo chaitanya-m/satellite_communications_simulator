@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700">
+  <rect width="1200" height="700" fill="#faf8f2"/>
+  <line x1="600" y1="100" x2="600" y2="600" stroke="#c7c2b6" stroke-width="3"/>
+  <text x="300" y="110" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="38" fill="#7f4030">Single-link realism</text>
+  <text x="900" y="110" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="38" fill="#2f5d50">Beam-wide realism</text>
+
+  <circle cx="170" cy="320" r="28" fill="#2f5d50"/>
+  <rect x="360" y="285" width="80" height="70" rx="12" fill="#d97757"/>
+  <line x1="198" y1="320" x2="360" y2="320" stroke="#1f2a2e" stroke-width="5" stroke-dasharray="12 10"/>
+  <path d="M245 275 C275 230, 325 230, 345 278" fill="none" stroke="#7f4030" stroke-width="4"/>
+  <path d="M245 365 C275 410, 325 410, 345 362" fill="none" stroke="#7f4030" stroke-width="4"/>
+  <text x="300" y="435" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="28" fill="#1f2a2e">Nakagami:</text>
+  <text x="300" y="470" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#1f2a2e">one link fluctuates</text>
+  <text x="300" y="505" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#1f2a2e">under LOS / multipath</text>
+
+  <circle cx="900" cy="330" r="180" fill="#f2efe5" stroke="#1f2a2e" stroke-width="4"/>
+  <rect x="820" y="250" width="150" height="150" fill="#d97757" fill-opacity="0.45" stroke="#d97757" stroke-width="4"/>
+  <g fill="#1f2a2e">
+    <circle cx="820" cy="330" r="8"/>
+    <circle cx="870" cy="230" r="8"/>
+    <circle cx="965" cy="260" r="8"/>
+    <circle cx="1030" cy="340" r="8"/>
+    <circle cx="955" cy="420" r="8"/>
+    <circle cx="835" cy="430" r="8"/>
+    <circle cx="760" cy="305" r="8"/>
+    <circle cx="895" cy="330" r="8"/>
+  </g>
+  <text x="900" y="560" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="28" fill="#1f2a2e">This study:</text>
+  <text x="900" y="595" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#1f2a2e">where bad regions are in space</text>
+  <text x="900" y="630" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#1f2a2e">and how many users are jointly affected</text>
+</svg>

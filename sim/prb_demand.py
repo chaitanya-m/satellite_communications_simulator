@@ -2,7 +2,9 @@
 
 This module implements the capped integer-demand mapping used in the paper:
 
-    SNR(x) = SNR0 * exp(G(x))
+    range_factor(x) = (d(x) / h)^(-gamma)   if pathloss is enabled
+                    = 1                      otherwise
+    SNR(x) = SNR0 * range_factor(x) * exp(G(x))
     eta_eff(x) = max(eta_min, log2(1 + SNR(x)))
     N_RB(x) = ceil(c / (W_RB * eta_eff(x)))
 
@@ -20,6 +22,12 @@ Conventions:
     - ``G`` can be negative (attenuation, ``S<1``) or positive (gain, ``S>1``).
     - ``snr0_linear`` is the reference SNR when ``G=0`` (that is ``S=1``).
       Example: ``snr0_linear=1.0`` means reference SNR = 1 (0 dB).
+    - if pathloss is enabled, ``d(x) = sqrt(h^2 + r(x)^2)`` is the user slant
+      range under altitude ``h`` and horizontal beam-center offset ``r(x)``,
+      while ``gamma`` is the pathloss exponent.
+    - the pathloss term is normalized by ``h`` so that at beam center
+      (``r=0 -> d=h``) we still have ``range_factor = 1`` and therefore
+      ``SNR = snr0_linear * exp(G)`` at that reference point.
 
 Practical modeling note:
     ``eta_min`` is a minimum spectral-efficiency floor used to avoid unbounded
@@ -45,12 +53,21 @@ class PRBDemandParams:
         rb_bandwidth_hz: Bandwidth represented by one PRB (Hz).
         snr0_linear: Reference SNR at ``G=0`` (no shadowing gain/loss).
         eta_min: Minimum spectral-efficiency floor (bits/s/Hz).
+        pathloss_exponent:
+            Optional distance-decay exponent ``gamma``. Use ``0.0`` to disable
+            explicit distance-based pathloss in this simplified model.
+        satellite_altitude_units:
+            Altitude ``h`` used in the normalized slant-range term. The unit is
+            intentionally abstract here; the experiments can interpret it as km,
+            m, or any other consistent length scale.
     """
 
     required_rate_bps: float
     rb_bandwidth_hz: float
     snr0_linear: float
     eta_min: float
+    pathloss_exponent: float = 0.0
+    satellite_altitude_units: float | None = None
 
     def __post_init__(self) -> None:
         if self.required_rate_bps <= 0.0:
@@ -61,6 +78,14 @@ class PRBDemandParams:
             raise ValueError("snr0_linear must be positive")
         if self.eta_min <= 0.0:
             raise ValueError("eta_min must be positive")
+        if self.pathloss_exponent < 0.0:
+            raise ValueError("pathloss_exponent must be non-negative")
+        if self.satellite_altitude_units is not None and self.satellite_altitude_units <= 0.0:
+            raise ValueError("satellite_altitude_units must be positive when provided")
+        if self.pathloss_exponent > 0.0 and self.satellite_altitude_units is None:
+            raise ValueError(
+                "satellite_altitude_units must be provided when pathloss_exponent > 0"
+            )
 
     @property
     def max_prb_per_user(self) -> int:
@@ -76,12 +101,20 @@ def prb_demand_from_log_shadowing(
     log_shadowing: Sequence[float] | np.ndarray,
     *,
     params: PRBDemandParams,
+    user_locations: Sequence[Sequence[float]] | np.ndarray | None = None,
+    beam_center_xy: tuple[float, float] = (0.0, 0.0),
 ) -> np.ndarray:
     """Compute capped integer PRB demand per user.
 
     Args:
         log_shadowing: Per-user natural-log shadowing values ``G=ln(S)``.
         params: PRB-demand model parameters.
+        user_locations:
+            Optional user coordinates of shape ``(n_users, 2)``. Required when
+            explicit pathloss is enabled in ``params``.
+        beam_center_xy:
+            Horizontal reference point used for the slant-range computation.
+            By default the beam is assumed centered at the origin.
 
     Returns:
         Integer NumPy array of per-user PRB demands.
@@ -102,8 +135,25 @@ def prb_demand_from_log_shadowing(
     if g.size == 0:
         raise ValueError("log_shadowing must be non-empty")
 
-    # Map log-shadowing to SNR using SNR = snr0 * exp(G).
-    snr = params.snr0_linear * np.exp(g)
+    if params.pathloss_exponent > 0.0:
+        if user_locations is None:
+            raise ValueError("user_locations must be provided when pathloss is enabled")
+        xy = np.asarray(user_locations, dtype=float)
+        if xy.ndim != 2 or xy.shape[1] != 2:
+            raise ValueError("user_locations must have shape (n_users, 2)")
+        if xy.shape[0] != g.size:
+            raise ValueError("user_locations length must match log_shadowing length")
+        dx = xy[:, 0] - float(beam_center_xy[0])
+        dy = xy[:, 1] - float(beam_center_xy[1])
+        horizontal_distance = np.sqrt(dx * dx + dy * dy)
+        altitude = float(params.satellite_altitude_units)
+        slant_range = np.sqrt((altitude * altitude) + (horizontal_distance * horizontal_distance))
+        range_factor = (slant_range / altitude) ** (-params.pathloss_exponent)
+    else:
+        range_factor = 1.0
+
+    # Map log-shadowing to SNR using the normalized slant-range term.
+    snr = params.snr0_linear * range_factor * np.exp(g)
     # Shannon-like spectral efficiency in bits/s/Hz.
     spectral_eff = np.log2(1.0 + snr)
     # Apply practical floor to avoid unbounded demand in deep fades.

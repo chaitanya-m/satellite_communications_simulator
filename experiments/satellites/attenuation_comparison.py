@@ -125,6 +125,7 @@ def run_attenuation_model_comparison(
                 model=model,
                 user_locations=user_locations,
                 prb_params=prb_params,
+                beam_center_xy=(beam.x_center, beam.y_center),
                 rng=model_rng,
             )
             for budget_idx, budget in enumerate(budgets):
@@ -239,7 +240,10 @@ def run_truth_anchored_attenuation_comparison(
             true_total_demand = 0
         else:
             true_per_user_prb = prb_demand_from_log_shadowing(
-                true_log_shadowing, params=prb_params
+                true_log_shadowing,
+                params=prb_params,
+                user_locations=user_locations,
+                beam_center_xy=(beam.x_center, beam.y_center),
             )
             true_total_demand = total_prb_demand(true_per_user_prb)
         for budget_idx, budget in enumerate(budgets):
@@ -253,6 +257,7 @@ def run_truth_anchored_attenuation_comparison(
                 model=model,
                 user_locations=user_locations,
                 prb_params=prb_params,
+                beam_center_xy=(beam.x_center, beam.y_center),
                 rng=model_rng,
             )
             for budget_idx, budget in enumerate(budgets):
@@ -320,6 +325,7 @@ def _sample_total_prb_demand_for_model(
     model: ModelSpec,
     user_locations,
     prb_params: PRBDemandParams,
+    beam_center_xy: tuple[float, float],
     rng: random.Random,
 ) -> int:
     """Sample one trial's total PRB demand under a specific shadowing model.
@@ -328,6 +334,7 @@ def _sample_total_prb_demand_for_model(
         model: One model specification from the comparison set.
         user_locations: Fixed user positions for this trial.
         prb_params: Parameters used to map log-shadowing to PRB demand.
+        beam_center_xy: Beam-center coordinates used for the slant-range term.
         rng: Trial-local RNG controlling the model-side random draw.
 
     Returns:
@@ -366,7 +373,12 @@ def _sample_total_prb_demand_for_model(
         raise ValueError(f"unsupported model kind: {model.kind}")
 
     # Convert that log-shadowing realization into total beam demand.
-    per_user_prb = prb_demand_from_log_shadowing(log_shadowing, params=prb_params)
+    per_user_prb = prb_demand_from_log_shadowing(
+        log_shadowing,
+        params=prb_params,
+        user_locations=user_locations,
+        beam_center_xy=beam_center_xy,
+    )
     return total_prb_demand(per_user_prb)
 
 
@@ -683,6 +695,7 @@ def run_gaussian_vs_uniform_certificate(
                     model=uniform_model,
                     user_locations=user_locations,
                     prb_params=prb_params,
+                    beam_center_xy=(beam.x_center, beam.y_center),
                     rng=uniform_rng,
                     prediction_draws=prediction_draws_per_trial,
                 )
@@ -690,6 +703,7 @@ def run_gaussian_vs_uniform_certificate(
                     model=gaussian_model,
                     user_locations=user_locations,
                     prb_params=prb_params,
+                    beam_center_xy=(beam.x_center, beam.y_center),
                     rng=gaussian_rng,
                     prediction_draws=prediction_draws_per_trial,
                 )
@@ -833,7 +847,12 @@ def _true_total_prb_demand_for_trial(
     )
     if true_log_shadowing.size == 0:
         return 0
-    true_per_user_prb = prb_demand_from_log_shadowing(true_log_shadowing, params=prb_params)
+    true_per_user_prb = prb_demand_from_log_shadowing(
+        true_log_shadowing,
+        params=prb_params,
+        user_locations=user_locations,
+        beam_center_xy=(beam.x_center, beam.y_center),
+    )
     return total_prb_demand(true_per_user_prb)
 
 
@@ -842,6 +861,7 @@ def _estimate_model_mean_total_prb_demand_for_trial(
     model: ModelSpec,
     user_locations,
     prb_params: PRBDemandParams,
+    beam_center_xy: tuple[float, float],
     rng: random.Random,
     prediction_draws: int,
 ) -> float:
@@ -886,6 +906,7 @@ def _estimate_model_mean_total_prb_demand_for_trial(
                 model=model,
                 user_locations=user_locations,
                 prb_params=prb_params,
+                beam_center_xy=beam_center_xy,
                 rng=draw_rng,
             )
         )

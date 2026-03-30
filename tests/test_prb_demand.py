@@ -11,6 +11,10 @@ Convention used by these tests:
 - ``snr0_linear`` is the reference SNR when ``G = 0`` (equivalently ``S = 1``,
   meaning no additional shadowing gain/loss). For any user,
   ``SNR = snr0_linear * exp(G)``.
+- if explicit pathloss is enabled, a normalized slant-range term multiplies the
+  SNR:
+  ``SNR = snr0_linear * (d/h)^(-gamma) * exp(G)``,
+  where ``h`` is altitude and ``d`` is slant range from the beam center.
 - Choosing ``snr0_linear = 1.0`` means the reference SNR is ``1`` in linear scale
   (that is ``0 dB``). This is a neutral baseline used to keep tests easy to interpret.
 - Choosing ``rb_bandwidth_hz = 180_000`` uses a common PRB-like bandwidth scale,
@@ -143,3 +147,53 @@ def test_total_prb_demand_rejects_invalid_weights() -> None:
     # Invalid parameterization: non-positive weight is not allowed.
     with pytest.raises(ValueError, match="must be positive"):
         total_prb_demand([1, 2], user_weights=[1, 0])
+
+
+def test_prb_demand_increases_with_distance_when_pathloss_is_enabled() -> None:
+    """With pathloss enabled, farther users should not need fewer PRBs.
+
+    Checks performed:
+    - users with the same shadowing but larger beam-center offset receive lower
+      SNR from the slant-range term;
+    - lower SNR translates into weakly larger PRB demand.
+    """
+
+    params = PRBDemandParams(
+        required_rate_bps=1_000_000.0,
+        rb_bandwidth_hz=180_000.0,
+        snr0_linear=1.0,
+        eta_min=0.1,
+        pathloss_exponent=2.0,
+        satellite_altitude_units=50.0,
+    )
+    log_shadowing = [0.0, 0.0]
+    user_locations = [[0.0, 0.0], [30.0, 0.0]]
+
+    prb = prb_demand_from_log_shadowing(
+        log_shadowing,
+        params=params,
+        user_locations=user_locations,
+        beam_center_xy=(0.0, 0.0),
+    )
+
+    assert prb[1] > prb[0]
+
+
+def test_prb_demand_requires_user_locations_when_pathloss_is_enabled() -> None:
+    """Pathloss-enabled demand mapping must receive user coordinates.
+
+    Checks performed:
+    - enabling the slant-range term without user positions is rejected.
+    """
+
+    params = PRBDemandParams(
+        required_rate_bps=1_000_000.0,
+        rb_bandwidth_hz=180_000.0,
+        snr0_linear=1.0,
+        eta_min=0.1,
+        pathloss_exponent=2.0,
+        satellite_altitude_units=50.0,
+    )
+
+    with pytest.raises(ValueError, match="user_locations must be provided"):
+        prb_demand_from_log_shadowing([0.0], params=params)

@@ -80,6 +80,7 @@ from experiments.satellites.attenuation_comparison import (
 from experiments.satellites.attenuation_contracts import (
     ExperimentConfig,
     GaussianParams,
+    GaussianVsUniformCertificateResult,
     ModelSpec,
     UniformParams,
 )
@@ -167,6 +168,169 @@ def _write_research_results(
     _table_path().write_text("\n".join(raw_table_lines) + "\n")
 
 
+def _run_certificate_experiment_and_write_results(
+    *,
+    experiment_name: str,
+    config: ExperimentConfig,
+    beam: CircularBeam,
+    prb_params: PRBDemandParams,
+    scenarios: tuple[ObstructionFieldSpec, ...],
+    base_seeds: tuple[int, ...],
+    prediction_draws_per_trial: int,
+) -> GaussianVsUniformCertificateResult:
+    """Run one certificate experiment and persist summary plus raw tables.
+
+    Why this helper exists:
+    - multiple research-hypothesis tests in this file use the same reporting
+      path: run the certificate, derive per-scenario summaries, write raw
+      trial rows, then write seed-level dimensioning rows for the same
+      scenario family;
+    - centralizing that workflow keeps the research tests focused on what
+      varies scientifically from one experiment to the next.
+    """
+
+    cert = run_gaussian_vs_uniform_certificate(
+        config=config,
+        beam=beam,
+        prb_params=prb_params,
+        scenarios=scenarios,
+        base_seeds=base_seeds,
+        alpha=0.05,
+        threshold=0.5,
+        prediction_draws_per_trial=prediction_draws_per_trial,
+    )
+
+    raw_table_lines: list[str] = [
+        "[trial_level_certificate_rows]",
+        (
+            "scenario_label,base_seed,trial_index,true_total_demand,"
+            "uniform_predicted_total_demand,gaussian_predicted_total_demand,"
+            "uniform_abs_demand_error,gaussian_abs_demand_error,"
+            "gaussian_better,tie"
+        ),
+    ]
+    for outcome in cert.outcomes:
+        raw_table_lines.append(
+            ",".join(
+                [
+                    outcome.scenario_label,
+                    str(outcome.base_seed),
+                    str(outcome.trial_index),
+                    str(outcome.true_total_demand),
+                    _format_float(outcome.uniform_predicted_total_demand),
+                    _format_float(outcome.gaussian_predicted_total_demand),
+                    _format_float(outcome.uniform_abs_demand_error),
+                    _format_float(outcome.gaussian_abs_demand_error),
+                    str(outcome.gaussian_better),
+                    str(outcome.tie),
+                ]
+            )
+        )
+    raw_table_lines.append("")
+
+    scenario_labels_in_order = [
+        scenario.scenario_label or scenario.pattern_kind for scenario in scenarios
+    ]
+    per_scenario_lines: list[str] = []
+    raw_table_lines.extend(
+        [
+            "[seed_level_dimensioning_rows]",
+            (
+                "scenario_label,base_seed,truth_required_budget,"
+                "uniform_required_budget,gaussian_required_budget"
+            ),
+        ]
+    )
+
+    for scenario_label in scenario_labels_in_order:
+        scenario_outcomes = tuple(
+            outcome for outcome in cert.outcomes if outcome.scenario_label == scenario_label
+        )
+        scenario_cert = certify_gaussian_better_from_error_pairs(
+            error_pairs=tuple(
+                (
+                    outcome.uniform_abs_demand_error,
+                    outcome.gaussian_abs_demand_error,
+                )
+                for outcome in scenario_outcomes
+            ),
+            alpha=0.05,
+            threshold=0.5,
+            tie_policy="uniform_wins",
+        )
+        mean_uniform_abs_error = mean(
+            outcome.uniform_abs_demand_error for outcome in scenario_outcomes
+        )
+        mean_gaussian_abs_error = mean(
+            outcome.gaussian_abs_demand_error for outcome in scenario_outcomes
+        )
+        per_scenario_lines.extend(
+            [
+                f"[scenario.{scenario_label}]",
+                f"successes = {scenario_cert.successes}",
+                f"trials = {scenario_cert.trials}",
+                f"ties = {scenario_cert.ties}",
+                f"p_hat = {_format_float(scenario_cert.p_hat)}",
+                f"lcb = {_format_float(scenario_cert.lcb)}",
+                f"certified = {scenario_cert.certified}",
+                f"mean_uniform_abs_error = {_format_float(mean_uniform_abs_error)}",
+                f"mean_gaussian_abs_error = {_format_float(mean_gaussian_abs_error)}",
+                "",
+            ]
+        )
+
+    scenarios_by_label = {
+        (scenario.scenario_label or scenario.pattern_kind): scenario for scenario in scenarios
+    }
+    for scenario_label in scenario_labels_in_order:
+        scenario = scenarios_by_label[scenario_label]
+        for seed in base_seeds:
+            seed_config = ExperimentConfig(
+                ppp_intensity_lambda=config.ppp_intensity_lambda,
+                outage_target_epsilon=config.outage_target_epsilon,
+                candidate_rb_budgets=config.candidate_rb_budgets,
+                n_trials=config.n_trials,
+                base_seed=int(seed),
+                models=config.models,
+            )
+            dimensioning_result = run_truth_anchored_attenuation_comparison(
+                config=seed_config,
+                beam=beam,
+                prb_params=prb_params,
+                ground_truth_spec=scenario,
+                scenario_label=scenario_label,
+            )
+            budgets_by_model = {
+                estimate.model_id: estimate.required_budget
+                for estimate in dimensioning_result.model_comparison.estimates
+            }
+            raw_table_lines.append(
+                ",".join(
+                    [
+                        scenario_label,
+                        str(seed),
+                        str(dimensioning_result.ground_truth_required_budget),
+                        str(budgets_by_model["uniform_baseline"]),
+                        str(budgets_by_model["gaussian_l1"]),
+                    ]
+                )
+            )
+    raw_table_lines.append("")
+
+    _write_research_results(
+        experiment_name=experiment_name,
+        config=config,
+        beam=beam,
+        prb_params=prb_params,
+        base_seeds=base_seeds,
+        prediction_draws_per_trial=prediction_draws_per_trial,
+        pooled_certificate=cert,
+        per_scenario_lines=per_scenario_lines,
+        raw_table_lines=raw_table_lines,
+    )
+    return cert
+
+
 def _fragmentation_experiment_setup() -> tuple[
     ExperimentConfig,
     CircularBeam,
@@ -181,6 +345,8 @@ def _fragmentation_experiment_setup() -> tuple[
     - PPP intensity = 1 user per unit area, so expected users per trial are
       also about 314, i.e. a few hundred users in the footprint;
     - PRB-demand parameters are chosen so ``max_prb_per_user = 10`` exactly;
+    - explicit distance-based pathloss is enabled with exponent ``2.0`` and a
+      baseline altitude of ``250`` units;
     - the tested budget grid runs from 500 to 6000, which stays below
       ``20 * expected_users ~= 6283``.
     - the outer experiment uses 10 independent seed paths and 100 PPP trials
@@ -278,6 +444,8 @@ def _fragmentation_experiment_setup() -> tuple[
         rb_bandwidth_hz=1_000.0,
         snr0_linear=1.0,
         eta_min=0.1,
+        pathloss_exponent=2.0,
+        satellite_altitude_units=250.0,
     )
     scenarios = tuple(
         ObstructionFieldSpec(
@@ -291,6 +459,50 @@ def _fragmentation_experiment_setup() -> tuple[
     )
     # Standard seed set for this first fragmentation regime.
     base_seeds = tuple(range(101, 111))
+    return config, beam, prb_params, scenarios, base_seeds
+
+
+def _blocked_area_experiment_setup() -> tuple[
+    ExperimentConfig,
+    CircularBeam,
+    PRBDemandParams,
+    tuple[ObstructionFieldSpec, ...],
+    tuple[int, ...],
+]:
+    """Return the first blocked-area sweep with fixed square-family geometry.
+
+    Scientific axis:
+    - hold the truth family to squares only, with fragment counts ``K in {1,4}``;
+    - hold extra loss fixed at 10 dB;
+    - sweep blocked area fraction from larger values to smaller values;
+    - ask whether smaller blocked area shifts the advantage toward the uniform
+      baseline.
+
+    Current sweep:
+    - area fractions = ``(0.50, 0.40, 0.30, 0.20, 0.10)``;
+    - for each area fraction, run both ``K=1`` and ``K=4``.
+
+    Everything else stays aligned with the fragmentation experiment:
+    - same beam,
+    - same PPP intensity,
+    - same PRB mapping,
+    - same Gaussian/uniform shared-moment calibration,
+    - same seed/trial structure.
+    """
+
+    config, beam, prb_params, _scenarios, base_seeds = _fragmentation_experiment_setup()
+    area_fractions = (0.50, 0.40, 0.30, 0.20, 0.10)
+    scenarios = tuple(
+        ObstructionFieldSpec(
+            pattern_kind="square_fragments",
+            scenario_label=f"area_{int(area_fraction * 100):02d}_k{square_count:02d}",
+            extra_loss_db=10.0,
+            square_area_fraction=area_fraction,
+            fragment_square_count=square_count,
+        )
+        for area_fraction in area_fractions
+        for square_count in (1, 4)
+    )
     return config, beam, prb_params, scenarios, base_seeds
 
 
@@ -369,14 +581,13 @@ def test_fragmentation_experiment_certificate_runs_across_multiple_fragment_coun
 
     config, beam, prb_params, scenarios, base_seeds = _fragmentation_experiment_setup()
 
-    cert = run_gaussian_vs_uniform_certificate(
+    cert = _run_certificate_experiment_and_write_results(
+        experiment_name="fragmentation_experiment_v1",
         config=config,
         beam=beam,
         prb_params=prb_params,
         scenarios=scenarios,
         base_seeds=base_seeds,
-        alpha=0.05,
-        threshold=0.5,
         prediction_draws_per_trial=10,
     )
 
@@ -398,134 +609,6 @@ def test_fragmentation_experiment_certificate_runs_across_multiple_fragment_coun
         "square_fragments_k25",
     }
 
-    raw_table_lines: list[str] = [
-        "[trial_level_certificate_rows]",
-        (
-            "scenario_label,base_seed,trial_index,true_total_demand,"
-            "uniform_predicted_total_demand,gaussian_predicted_total_demand,"
-            "uniform_abs_demand_error,gaussian_abs_demand_error,"
-            "gaussian_better,tie"
-        ),
-    ]
-    for outcome in cert.outcomes:
-        raw_table_lines.append(
-            ",".join(
-                [
-                    outcome.scenario_label,
-                    str(outcome.base_seed),
-                    str(outcome.trial_index),
-                    str(outcome.true_total_demand),
-                    _format_float(outcome.uniform_predicted_total_demand),
-                    _format_float(outcome.gaussian_predicted_total_demand),
-                    _format_float(outcome.uniform_abs_demand_error),
-                    _format_float(outcome.gaussian_abs_demand_error),
-                    str(outcome.gaussian_better),
-                    str(outcome.tie),
-                ]
-            )
-        )
-    raw_table_lines.append("")
-
-    # Derive one per-scenario certificate summary from the pooled trial
-    # outcomes, without rerunning the experiment. This keeps the reporting
-    # deterministic and avoids duplicate computation.
-    per_scenario_lines: list[str] = []
-    raw_table_lines.extend(
-        [
-            "[seed_level_dimensioning_rows]",
-            (
-                "scenario_label,base_seed,truth_required_budget,"
-                "uniform_required_budget,gaussian_required_budget"
-            ),
-        ]
-    )
-    for scenario_label in sorted(scenario_labels):
-        scenario_outcomes = tuple(
-            outcome for outcome in cert.outcomes if outcome.scenario_label == scenario_label
-        )
-        scenario_cert = certify_gaussian_better_from_error_pairs(
-            error_pairs=tuple(
-                (
-                    outcome.uniform_abs_demand_error,
-                    outcome.gaussian_abs_demand_error,
-                )
-                for outcome in scenario_outcomes
-            ),
-            alpha=0.05,
-            threshold=0.5,
-            tie_policy="uniform_wins",
-        )
-        mean_uniform_abs_error = mean(
-            outcome.uniform_abs_demand_error for outcome in scenario_outcomes
-        )
-        mean_gaussian_abs_error = mean(
-            outcome.gaussian_abs_demand_error for outcome in scenario_outcomes
-        )
-        per_scenario_lines.extend(
-            [
-                f"[scenario.{scenario_label}]",
-                f"successes = {scenario_cert.successes}",
-                f"trials = {scenario_cert.trials}",
-                f"ties = {scenario_cert.ties}",
-                f"p_hat = {_format_float(scenario_cert.p_hat)}",
-                f"lcb = {_format_float(scenario_cert.lcb)}",
-                f"certified = {scenario_cert.certified}",
-                f"mean_uniform_abs_error = {_format_float(mean_uniform_abs_error)}",
-                f"mean_gaussian_abs_error = {_format_float(mean_gaussian_abs_error)}",
-                "",
-            ]
-        )
-
-    scenarios_by_label = {
-        (scenario.scenario_label or scenario.pattern_kind): scenario for scenario in scenarios
-    }
-    for scenario_label in sorted(scenario_labels):
-        scenario = scenarios_by_label[scenario_label]
-        for seed in base_seeds:
-            seed_config = ExperimentConfig(
-                ppp_intensity_lambda=config.ppp_intensity_lambda,
-                outage_target_epsilon=config.outage_target_epsilon,
-                candidate_rb_budgets=config.candidate_rb_budgets,
-                n_trials=config.n_trials,
-                base_seed=int(seed),
-                models=config.models,
-            )
-            dimensioning_result = run_truth_anchored_attenuation_comparison(
-                config=seed_config,
-                beam=beam,
-                prb_params=prb_params,
-                ground_truth_spec=scenario,
-                scenario_label=scenario_label,
-            )
-            budgets_by_model = {
-                estimate.model_id: estimate.required_budget
-                for estimate in dimensioning_result.model_comparison.estimates
-            }
-            raw_table_lines.append(
-                ",".join(
-                    [
-                        scenario_label,
-                        str(seed),
-                        str(dimensioning_result.ground_truth_required_budget),
-                        str(budgets_by_model["uniform_baseline"]),
-                        str(budgets_by_model["gaussian_l1"]),
-                    ]
-                )
-            )
-    raw_table_lines.append("")
-
-    _write_research_results(
-        experiment_name="fragmentation_experiment_v1",
-        config=config,
-        beam=beam,
-        prb_params=prb_params,
-        base_seeds=base_seeds,
-        prediction_draws_per_trial=10,
-        pooled_certificate=cert,
-        per_scenario_lines=per_scenario_lines,
-        raw_table_lines=raw_table_lines,
-    )
-
     summary_text = _summary_path().read_text()
     table_text = _table_path().read_text()
     assert "[pooled_certificate]" in summary_text
@@ -534,5 +617,62 @@ def test_fragmentation_experiment_certificate_runs_across_multiple_fragment_coun
     assert "[scenario.square_fragments_k09]" in summary_text
     assert "[scenario.square_fragments_k16]" in summary_text
     assert "[scenario.square_fragments_k25]" in summary_text
+    assert "[trial_level_certificate_rows]" in table_text
+    assert "[seed_level_dimensioning_rows]" in table_text
+
+
+def test_blocked_area_experiment_starts_large_and_decreases_area_for_k1_and_k4() -> None:
+    """Run the first blocked-area sweep while holding the square family fixed.
+
+    Why this matters:
+    - the fragmentation experiment showed that changing ``K`` alone does not
+      separate Gaussian from uniform under the current truth model;
+    - the next disciplined axis is blocked area itself, while keeping the
+      shape family fixed to squares and using only ``K=1`` and ``K=4`` for
+      completeness;
+    - this experiment is meant to expose whether smaller blocked area moves
+      the comparison toward the uniform baseline.
+
+    Checks performed:
+    - the scenario family uses only ``K in {1,4}``;
+    - area fractions are ordered from larger to smaller values;
+    - the certificate returns one outcome per scenario x seed x trial;
+    - the experiment writes the expected summary and raw-table sections.
+    """
+
+    config, beam, prb_params, scenarios, base_seeds = _blocked_area_experiment_setup()
+
+    assert tuple(scenario.square_area_fraction for scenario in scenarios[::2]) == (
+        0.50,
+        0.40,
+        0.30,
+        0.20,
+        0.10,
+    )
+    assert {scenario.fragment_square_count for scenario in scenarios} == {1, 4}
+
+    cert = _run_certificate_experiment_and_write_results(
+        experiment_name="blocked_area_experiment_v1",
+        config=config,
+        beam=beam,
+        prb_params=prb_params,
+        scenarios=scenarios,
+        base_seeds=base_seeds,
+        prediction_draws_per_trial=10,
+    )
+
+    expected_outcomes = len(scenarios) * len(base_seeds) * config.n_trials
+    assert cert.trials == expected_outcomes
+    assert len(cert.outcomes) == expected_outcomes
+    assert 0.0 <= cert.p_hat <= 1.0
+    assert 0.0 <= cert.lcb <= 1.0
+
+    summary_text = _summary_path().read_text()
+    table_text = _table_path().read_text()
+    assert "name = blocked_area_experiment_v1" in summary_text
+    assert "[scenario.area_50_k01]" in summary_text
+    assert "[scenario.area_50_k04]" in summary_text
+    assert "[scenario.area_10_k01]" in summary_text
+    assert "[scenario.area_10_k04]" in summary_text
     assert "[trial_level_certificate_rows]" in table_text
     assert "[seed_level_dimensioning_rows]" in table_text

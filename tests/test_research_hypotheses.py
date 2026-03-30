@@ -193,11 +193,45 @@ def _research_scale_setup() -> tuple[
       one fixed user geometry when the certificate runner estimates each
       model's predicted mean total demand.
 
+    Calibration policy used here:
+    - keep the comparison simple by using one shared target mean/variance for
+      both candidate models;
+    - for the Gaussian model, that target is supplied directly as
+      ``mean_log`` and ``variance_log`` because the Gaussian parameterization
+      exposes those moments explicitly;
+    - for the uniform model, variance is not a direct parameter: the model is
+      parameterized by ``low_log`` and ``high_log`` instead, so those bounds
+      must be computed from the desired mean/variance;
+    - for ``U ~ Uniform[a, b]``, we have
+      ``E[U] = (a + b) / 2`` and ``Var(U) = (b - a)^2 / 12``;
+    - solving those equations for target mean ``m`` and variance ``v`` gives
+      half-width ``sqrt(3v)``, so
+      ``low_log = m - sqrt(3v)`` and ``high_log = m + sqrt(3v)``.
+
+    Why this is the first calibration step:
+    - without at least matching the first two moments, the comparison is
+      confounded by a trivial marginal mismatch before we even get to the
+      intended question of model structure;
+    - this is still the simplest possible calibration change because it does
+      not alter the rest of the experiment flow or introduce scenario-specific
+      fitting logic.
+
     The values here are intended as a stable research-scale baseline for
     hypothesis testing. They are not yet claimed to be the final publication
     configuration, but they are explicitly chosen to live in the same part of
     the parameter space as the intended study.
     """
+
+    # Simplest fair calibration step:
+    # keep one shared mean/variance target for both comparison models, so the
+    # experiment is not confounded by an avoidable first-moment or second-
+    # moment mismatch before we study anything more subtle.
+    comparison_mean_log = -0.75
+    comparison_variance_log = 0.4
+    # Uniform does have variance, but it is implied by its interval rather than
+    # supplied directly. For target variance v, the required half-width is
+    # sqrt(3v), because Var(Uniform[m-h, m+h]) = h^2 / 3 = v.
+    uniform_half_width = math.sqrt(3.0 * comparison_variance_log)
 
     config = ExperimentConfig(
         ppp_intensity_lambda=1.0,
@@ -209,12 +243,19 @@ def _research_scale_setup() -> tuple[
             ModelSpec(
                 model_id="uniform_baseline",
                 kind="uniform",
-                uniform=UniformParams(low_log=-1.5, high_log=0.2),
+                uniform=UniformParams(
+                    low_log=comparison_mean_log - uniform_half_width,
+                    high_log=comparison_mean_log + uniform_half_width,
+                ),
             ),
             ModelSpec(
                 model_id="gaussian_l1",
                 kind="gaussian",
-                gaussian=GaussianParams(mean_log=-0.75, variance_log=0.4, corr_length=2.0),
+                gaussian=GaussianParams(
+                    mean_log=comparison_mean_log,
+                    variance_log=comparison_variance_log,
+                    corr_length=2.0,
+                ),
             ),
         ),
     )
@@ -299,6 +340,9 @@ def test_research_scale_certificate_runs_across_multiple_scenarios() -> None:
       current research question;
     - this test documents and checks the current pooling behavior across
       scenarios, seeds, and trials in a non-trivial user regime;
+    - it uses the simplest possible fair calibration step: uniform and
+      Gaussian share the same target mean/variance before any stronger fitting
+      ideas are considered;
     - it also documents the standard repeated-trial scale used in this file:
       10 seed paths and 100 PPP trials per seed-scenario block.
     - this test is meant to evolve toward an explicit research claim about when

@@ -107,6 +107,37 @@ def _format_float(value: float) -> str:
     return f"{value:.10f}"
 
 
+def _truth_mean_log_for_binary_obstruction(
+    *,
+    extra_loss_db: float,
+    blocked_area_fraction: float,
+    base_log_shadowing: float = 0.0,
+) -> float:
+    """Return the truth-side mean log shadowing for the current binary family.
+
+    For the obstruction patterns used in this file, the truth field takes only
+    two values:
+    - ``base_log_shadowing`` on the unblocked fraction ``1 - p`` of the beam;
+    - ``base_log_shadowing - loss_shift`` on the blocked fraction ``p``,
+      where ``loss_shift = ln(10) / 10 * extra_loss_db`` converts the dB loss
+      increment into natural-log scale.
+
+    That makes the beam-average truth mean explicit:
+
+        E[G_truth] = base_log_shadowing - p * loss_shift.
+
+    Why this helper exists:
+    - the first calibration step we want is mean matching only;
+    - for the current binary obstruction family, the truth mean is simple
+      enough to compute analytically instead of estimating numerically;
+    - keeping the formula in one place avoids repeating a silent conversion
+      from dB loss to natural-log shadowing mean.
+    """
+
+    loss_shift = (math.log(10.0) / 10.0) * extra_loss_db
+    return base_log_shadowing - (blocked_area_fraction * loss_shift)
+
+
 def _write_research_results(
     *,
     experiment_name: str,
@@ -118,6 +149,7 @@ def _write_research_results(
     pooled_certificate,
     per_scenario_lines: list[str],
     raw_table_lines: list[str],
+    extra_experiment_lines: list[str] | None = None,
 ) -> None:
     """Write one structured research-result snapshot to summary and raw tables.
 
@@ -153,7 +185,12 @@ def _write_research_results(
         f"n_trials_per_seed_scenario = {config.n_trials}",
         f"base_seeds = {seeds_csv}",
         f"prediction_draws_per_trial = {prediction_draws_per_trial}",
-        "",
+    ]
+    if extra_experiment_lines is not None:
+        lines.extend(extra_experiment_lines)
+    lines.extend(
+        [
+            "",
         "[pooled_certificate]",
         f"successes = {pooled_certificate.successes}",
         f"trials = {pooled_certificate.trials}",
@@ -162,7 +199,8 @@ def _write_research_results(
         f"lcb = {_format_float(pooled_certificate.lcb)}",
         f"certified = {pooled_certificate.certified}",
         "",
-    ]
+        ]
+    )
     lines.extend(per_scenario_lines)
     _summary_path().write_text("\n".join(lines) + "\n")
     _table_path().write_text("\n".join(raw_table_lines) + "\n")
@@ -370,27 +408,27 @@ def _fragmentation_experiment_setup() -> tuple[
       model's predicted mean total demand.
 
     Calibration policy used here:
-    - keep the comparison simple by using one shared target mean/variance for
-      both candidate models;
-    - for the Gaussian model, that target is supplied directly as
-      ``mean_log`` and ``variance_log`` because the Gaussian parameterization
-      exposes those moments explicitly;
-    - for the uniform model, variance is not a direct parameter: the model is
+    - keep the first calibration step as small as possible by matching only
+      the shared model mean to the truth family while leaving the common
+      comparison variance fixed;
+    - for the Gaussian model, that mean is supplied directly as ``mean_log``
+      because the Gaussian parameterization exposes it explicitly;
+    - for the uniform model, mean is not supplied directly: the model is
       parameterized by ``low_log`` and ``high_log`` instead, so those bounds
-      must be computed from the desired mean/variance;
+      must be computed from the chosen mean and comparison variance;
     - for ``U ~ Uniform[a, b]``, we have
       ``E[U] = (a + b) / 2`` and ``Var(U) = (b - a)^2 / 12``;
-    - solving those equations for target mean ``m`` and variance ``v`` gives
-      half-width ``sqrt(3v)``, so
+    - solving those equations for target mean ``m`` and chosen variance ``v``
+      gives half-width ``sqrt(3v)``, so
       ``low_log = m - sqrt(3v)`` and ``high_log = m + sqrt(3v)``.
 
     Why this is the first calibration step:
-    - without at least matching the first two moments, the comparison is
-      confounded by a trivial marginal mismatch before we even get to the
-      intended question of model structure;
-    - this is still the simplest possible calibration change because it does
-      not alter the rest of the experiment flow or introduce scenario-specific
-      fitting logic.
+    - without at least matching the truth-side mean, the comparison is
+      confounded by a large one-point bias before we even get to the intended
+      question of model structure;
+    - this is still the simplest possible calibration change because it only
+      shifts the shared mean and does not alter the rest of the experiment
+      flow or introduce scenario-specific fitting logic.
 
     The values here are intended as the first stable baseline for the
     fragmentation experiment. They are not yet claimed to be the final
@@ -398,15 +436,19 @@ def _fragmentation_experiment_setup() -> tuple[
     support scenario-by-scenario comparisons.
     """
 
-    # Simplest fair calibration step:
-    # keep one shared mean/variance target for both comparison models, so the
-    # experiment is not confounded by an avoidable first-moment or second-
-    # moment mismatch before we study anything more subtle.
-    comparison_mean_log = -0.75
+    # Simplest calibration step:
+    # match the shared model mean to the current 50%-blocked truth family so
+    # the comparison is not dominated by a large one-point bias before we
+    # study anything more subtle about spatial structure.
+    comparison_mean_log = _truth_mean_log_for_binary_obstruction(
+        extra_loss_db=10.0,
+        blocked_area_fraction=0.5,
+    )
     comparison_variance_log = 0.4
     # Uniform does have variance, but it is implied by its interval rather than
-    # supplied directly. For target variance v, the required half-width is
-    # sqrt(3v), because Var(Uniform[m-h, m+h]) = h^2 / 3 = v.
+    # supplied directly. We keep the comparison variance fixed at 0.4 for now;
+    # for target variance v, the required half-width is sqrt(3v), because
+    # Var(Uniform[m-h, m+h]) = h^2 / 3 = v.
     uniform_half_width = math.sqrt(3.0 * comparison_variance_log)
 
     config = ExperimentConfig(
@@ -504,6 +546,33 @@ def _blocked_area_experiment_setup() -> tuple[
         for square_count in (1, 4)
     )
     return config, beam, prb_params, scenarios, base_seeds
+
+
+def _altitude_experiment_setup() -> tuple[
+    ExperimentConfig,
+    CircularBeam,
+    PRBDemandParams,
+    tuple[float, ...],
+    tuple[int, ...],
+]:
+    """Return the first altitude sweep for the pathloss-enabled study.
+
+    Scientific axis:
+    - hold the obstruction family fixed to the 50%-blocked square cases;
+    - hold pathloss exponent fixed at ``2.0``;
+    - vary only altitude across ``(50, 150, 250, 350, 450)`` units;
+    - ask whether model accuracy degrades as altitude increases.
+
+    Scope choice:
+    - use ``K=1`` and ``K=4`` for completeness, but keep blocked area fixed at
+      0.50 because fragmentation has already been shown to be largely inert
+      under the current truth model;
+    - this keeps altitude as the intended changing factor.
+    """
+
+    config, beam, prb_params, _scenarios, base_seeds = _fragmentation_experiment_setup()
+    altitudes = (50.0, 150.0, 250.0, 350.0, 450.0)
+    return config, beam, prb_params, altitudes, base_seeds
 
 
 def test_fragmentation_experiment_truth_anchored_run_uses_few_hundred_users_and_bounded_grid() -> None:
@@ -674,5 +743,257 @@ def test_blocked_area_experiment_starts_large_and_decreases_area_for_k1_and_k4()
     assert "[scenario.area_50_k04]" in summary_text
     assert "[scenario.area_10_k01]" in summary_text
     assert "[scenario.area_10_k04]" in summary_text
+    assert "[trial_level_certificate_rows]" in table_text
+    assert "[seed_level_dimensioning_rows]" in table_text
+
+
+def test_altitude_experiment_sweeps_from_balloon_height_to_upper_leo() -> None:
+    """Run the first altitude sweep under the pathloss-enabled radio model.
+
+    Why this matters:
+    - once explicit slant-range pathloss is present, altitude becomes a real
+      experiment axis instead of a missing parameter;
+    - this test holds the obstruction family fixed to the 50%-blocked square
+      cases and varies only altitude, so the resulting summaries can be read as
+      an altitude effect rather than an area or fragmentation effect;
+    - the aim is to measure whether model accuracy degrades as altitude rises
+      from balloon-like heights toward upper LEO.
+
+    Checks performed:
+    - the altitude grid is exactly ``50, 150, 250, 350, 450`` units;
+    - the pathloss exponent is fixed at ``2.0``;
+    - the pooled outcome count matches altitude x scenario x seed x trial;
+    - the written summary contains altitude sections for the endpoints of the
+      sweep as well as the scenario-level sections beneath them.
+    """
+
+    config, beam, base_prb_params, altitudes, base_seeds = _altitude_experiment_setup()
+
+    assert altitudes == (50.0, 150.0, 250.0, 350.0, 450.0)
+    assert base_prb_params.pathloss_exponent == 2.0
+
+    all_outcomes = []
+    per_scenario_lines: list[str] = []
+    raw_table_lines: list[str] = [
+        "[trial_level_certificate_rows]",
+        (
+            "altitude_units,scenario_label,base_seed,trial_index,true_total_demand,"
+            "uniform_predicted_total_demand,gaussian_predicted_total_demand,"
+            "uniform_abs_demand_error,gaussian_abs_demand_error,"
+            "gaussian_better,tie"
+        ),
+    ]
+
+    for altitude in altitudes:
+        prb_params = PRBDemandParams(
+            required_rate_bps=base_prb_params.required_rate_bps,
+            rb_bandwidth_hz=base_prb_params.rb_bandwidth_hz,
+            snr0_linear=base_prb_params.snr0_linear,
+            eta_min=base_prb_params.eta_min,
+            pathloss_exponent=base_prb_params.pathloss_exponent,
+            satellite_altitude_units=altitude,
+        )
+        scenarios = tuple(
+            ObstructionFieldSpec(
+                pattern_kind="square_fragments",
+                scenario_label=f"alt_{int(altitude):03d}_k{square_count:02d}",
+                extra_loss_db=10.0,
+                square_area_fraction=0.5,
+                fragment_square_count=square_count,
+            )
+            for square_count in (1, 4)
+        )
+        cert = run_gaussian_vs_uniform_certificate(
+            config=config,
+            beam=beam,
+            prb_params=prb_params,
+            scenarios=scenarios,
+            base_seeds=base_seeds,
+            alpha=0.05,
+            threshold=0.5,
+            prediction_draws_per_trial=10,
+        )
+        all_outcomes.extend(cert.outcomes)
+
+        for outcome in cert.outcomes:
+            raw_table_lines.append(
+                ",".join(
+                    [
+                        _format_float(altitude),
+                        outcome.scenario_label,
+                        str(outcome.base_seed),
+                        str(outcome.trial_index),
+                        str(outcome.true_total_demand),
+                        _format_float(outcome.uniform_predicted_total_demand),
+                        _format_float(outcome.gaussian_predicted_total_demand),
+                        _format_float(outcome.uniform_abs_demand_error),
+                        _format_float(outcome.gaussian_abs_demand_error),
+                        str(outcome.gaussian_better),
+                        str(outcome.tie),
+                    ]
+                )
+            )
+
+        altitude_cert = certify_gaussian_better_from_error_pairs(
+            error_pairs=tuple(
+                (
+                    outcome.uniform_abs_demand_error,
+                    outcome.gaussian_abs_demand_error,
+                )
+                for outcome in cert.outcomes
+            ),
+            alpha=0.05,
+            threshold=0.5,
+            tie_policy="uniform_wins",
+        )
+        per_scenario_lines.extend(
+            [
+                f"[altitude.{int(altitude):03d}]",
+                f"successes = {altitude_cert.successes}",
+                f"trials = {altitude_cert.trials}",
+                f"ties = {altitude_cert.ties}",
+                f"p_hat = {_format_float(altitude_cert.p_hat)}",
+                f"lcb = {_format_float(altitude_cert.lcb)}",
+                f"certified = {altitude_cert.certified}",
+                f"mean_uniform_abs_error = {_format_float(mean(outcome.uniform_abs_demand_error for outcome in cert.outcomes))}",
+                f"mean_gaussian_abs_error = {_format_float(mean(outcome.gaussian_abs_demand_error for outcome in cert.outcomes))}",
+                "",
+            ]
+        )
+
+        for scenario in scenarios:
+            scenario_label = scenario.scenario_label or scenario.pattern_kind
+            scenario_outcomes = tuple(
+                outcome for outcome in cert.outcomes if outcome.scenario_label == scenario_label
+            )
+            scenario_cert = certify_gaussian_better_from_error_pairs(
+                error_pairs=tuple(
+                    (
+                        outcome.uniform_abs_demand_error,
+                        outcome.gaussian_abs_demand_error,
+                    )
+                    for outcome in scenario_outcomes
+                ),
+                alpha=0.05,
+                threshold=0.5,
+                tie_policy="uniform_wins",
+            )
+            per_scenario_lines.extend(
+                [
+                    f"[scenario.{scenario_label}]",
+                    f"successes = {scenario_cert.successes}",
+                    f"trials = {scenario_cert.trials}",
+                    f"ties = {scenario_cert.ties}",
+                    f"p_hat = {_format_float(scenario_cert.p_hat)}",
+                    f"lcb = {_format_float(scenario_cert.lcb)}",
+                    f"certified = {scenario_cert.certified}",
+                    f"mean_uniform_abs_error = {_format_float(mean(outcome.uniform_abs_demand_error for outcome in scenario_outcomes))}",
+                    f"mean_gaussian_abs_error = {_format_float(mean(outcome.gaussian_abs_demand_error for outcome in scenario_outcomes))}",
+                    "",
+                ]
+            )
+
+    raw_table_lines.append("")
+    raw_table_lines.extend(
+        [
+            "[seed_level_dimensioning_rows]",
+            (
+                "altitude_units,scenario_label,base_seed,truth_required_budget,"
+                "uniform_required_budget,gaussian_required_budget"
+            ),
+        ]
+    )
+    for altitude in altitudes:
+        prb_params = PRBDemandParams(
+            required_rate_bps=base_prb_params.required_rate_bps,
+            rb_bandwidth_hz=base_prb_params.rb_bandwidth_hz,
+            snr0_linear=base_prb_params.snr0_linear,
+            eta_min=base_prb_params.eta_min,
+            pathloss_exponent=base_prb_params.pathloss_exponent,
+            satellite_altitude_units=altitude,
+        )
+        for square_count in (1, 4):
+            scenario_label = f"alt_{int(altitude):03d}_k{square_count:02d}"
+            scenario = ObstructionFieldSpec(
+                pattern_kind="square_fragments",
+                scenario_label=scenario_label,
+                extra_loss_db=10.0,
+                square_area_fraction=0.5,
+                fragment_square_count=square_count,
+            )
+            for seed in base_seeds:
+                seed_config = ExperimentConfig(
+                    ppp_intensity_lambda=config.ppp_intensity_lambda,
+                    outage_target_epsilon=config.outage_target_epsilon,
+                    candidate_rb_budgets=config.candidate_rb_budgets,
+                    n_trials=config.n_trials,
+                    base_seed=int(seed),
+                    models=config.models,
+                )
+                dimensioning_result = run_truth_anchored_attenuation_comparison(
+                    config=seed_config,
+                    beam=beam,
+                    prb_params=prb_params,
+                    ground_truth_spec=scenario,
+                    scenario_label=scenario_label,
+                )
+                budgets_by_model = {
+                    estimate.model_id: estimate.required_budget
+                    for estimate in dimensioning_result.model_comparison.estimates
+                }
+                raw_table_lines.append(
+                    ",".join(
+                        [
+                            _format_float(altitude),
+                            scenario_label,
+                            str(seed),
+                            str(dimensioning_result.ground_truth_required_budget),
+                            str(budgets_by_model["uniform_baseline"]),
+                            str(budgets_by_model["gaussian_l1"]),
+                        ]
+                    )
+                )
+    raw_table_lines.append("")
+
+    pooled_certificate = certify_gaussian_better_from_error_pairs(
+        error_pairs=tuple(
+            (
+                outcome.uniform_abs_demand_error,
+                outcome.gaussian_abs_demand_error,
+            )
+            for outcome in all_outcomes
+        ),
+        alpha=0.05,
+        threshold=0.5,
+        tie_policy="uniform_wins",
+    )
+    _write_research_results(
+        experiment_name="altitude_experiment_v1",
+        config=config,
+        beam=beam,
+        prb_params=base_prb_params,
+        base_seeds=base_seeds,
+        prediction_draws_per_trial=10,
+        pooled_certificate=pooled_certificate,
+        per_scenario_lines=per_scenario_lines,
+        raw_table_lines=raw_table_lines,
+        extra_experiment_lines=[
+            f"pathloss_exponent = {_format_float(base_prb_params.pathloss_exponent)}",
+            "altitude_units = 50,150,250,350,450",
+        ],
+    )
+
+    expected_outcomes = len(altitudes) * 2 * len(base_seeds) * config.n_trials
+    assert pooled_certificate.trials == expected_outcomes
+    assert 0.0 <= pooled_certificate.p_hat <= 1.0
+    assert 0.0 <= pooled_certificate.lcb <= 1.0
+
+    summary_text = _summary_path().read_text()
+    table_text = _table_path().read_text()
+    assert "name = altitude_experiment_v1" in summary_text
+    assert "[altitude.050]" in summary_text
+    assert "[altitude.450]" in summary_text
+    assert "[scenario.alt_050_k01]" in summary_text
+    assert "[scenario.alt_450_k04]" in summary_text
     assert "[trial_level_certificate_rows]" in table_text
     assert "[seed_level_dimensioning_rows]" in table_text

@@ -2,6 +2,7 @@
 
 These tests validate geometry masks and loss-application behavior for:
 - centered square,
+- fixed-area square fragments,
 - vertical bands,
 - multiple circles.
 """
@@ -44,6 +45,111 @@ def test_square_center_pattern_applies_extra_loss_inside_square_only() -> None:
     loss_shift = (math.log(10.0) / 10.0) * 20.0
     assert np.isclose(g[0], -loss_shift)
     assert np.isclose(g[1], 0.0)
+
+
+def test_square_fragments_with_one_fragment_matches_center_square() -> None:
+    """A one-fragment lattice should reduce exactly to the centered square."""
+
+    beam = CircularBeam(x_center=0.0, y_center=0.0, radius=10.0)
+    points = np.array(
+        [
+            [0.0, 0.0],
+            [6.0, 0.0],
+            [7.0, 0.0],
+            [0.0, 6.0],
+            [0.0, 7.0],
+        ],
+        dtype=float,
+    )
+    centered = ObstructionFieldSpec(
+        pattern_kind="square_center",
+        extra_loss_db=10.0,
+        square_area_fraction=0.5,
+    )
+    fragments = ObstructionFieldSpec(
+        pattern_kind="square_fragments",
+        extra_loss_db=10.0,
+        square_area_fraction=0.5,
+        fragment_square_count=1,
+        scenario_label="square_fragments_k1",
+    )
+
+    g_center = evaluate_obstruction_log_shadowing(
+        user_locations=points,
+        beam=beam,
+        spec=centered,
+    )
+    g_fragments = evaluate_obstruction_log_shadowing(
+        user_locations=points,
+        beam=beam,
+        spec=fragments,
+    )
+
+    np.testing.assert_allclose(g_fragments, g_center)
+
+
+def test_square_fragments_spread_blocked_area_away_from_center_for_four_squares() -> None:
+    """Four fragments should preserve area while opening the beam center."""
+
+    beam = CircularBeam(x_center=0.0, y_center=0.0, radius=10.0)
+    spec = ObstructionFieldSpec(
+        pattern_kind="square_fragments",
+        extra_loss_db=10.0,
+        square_area_fraction=0.5,
+        fragment_square_count=4,
+        scenario_label="square_fragments_k4",
+    )
+
+    total_area = spec.square_area_fraction * beam.area
+    side = math.sqrt(total_area / spec.fragment_square_count)
+    half = side / 2.0
+    center_offset = (beam.radius / math.sqrt(2.0)) - half
+    points = np.array(
+        [
+            [0.0, 0.0],  # center gap
+            [center_offset, center_offset],  # top-right square center
+            [-center_offset, center_offset],  # top-left square center
+            [center_offset, -center_offset],  # bottom-right square center
+            [-center_offset, -center_offset],  # bottom-left square center
+        ],
+        dtype=float,
+    )
+    g = evaluate_obstruction_log_shadowing(user_locations=points, beam=beam, spec=spec)
+    loss_shift = (math.log(10.0) / 10.0) * 10.0
+
+    assert np.isclose(g[0], 0.0)
+    assert np.allclose(g[1:], -loss_shift)
+
+
+def test_square_fragments_preserve_total_blocked_area_across_fragment_counts() -> None:
+    """Changing fragment count should preserve the total blocked beam fraction."""
+
+    beam = CircularBeam(x_center=0.0, y_center=0.0, radius=1.0)
+    xs = np.linspace(-beam.radius, beam.radius, 401)
+    xx, yy = np.meshgrid(xs, xs, indexing="xy")
+    grid_points = np.column_stack([xx.ravel(), yy.ravel()])
+    inside_beam = (grid_points[:, 0] ** 2 + grid_points[:, 1] ** 2) <= beam.radius**2
+    sample_points = grid_points[inside_beam]
+
+    blocked_fraction_estimates = []
+    for square_count in (1, 4, 9, 16, 25):
+        spec = ObstructionFieldSpec(
+            pattern_kind="square_fragments",
+            extra_loss_db=8.0,
+            square_area_fraction=0.5,
+            fragment_square_count=square_count,
+            scenario_label=f"square_fragments_k{square_count}",
+        )
+        g = evaluate_obstruction_log_shadowing(
+            user_locations=sample_points,
+            beam=beam,
+            spec=spec,
+        )
+        blocked_fraction_estimates.append(float(np.mean(g < 0.0)))
+
+    for estimate in blocked_fraction_estimates:
+        assert abs(estimate - 0.5) < 0.02
+    assert max(blocked_fraction_estimates) - min(blocked_fraction_estimates) < 0.02
 
 
 def test_vertical_bands_pattern_alternates_obstructed_strips() -> None:
@@ -121,6 +227,21 @@ def test_obstruction_spec_validates_parameter_ranges() -> None:
             square_area_fraction=0.0,
         )
 
+    with pytest.raises(ValueError, match="fragment_square_count"):
+        ObstructionFieldSpec(
+            pattern_kind="square_fragments",
+            extra_loss_db=1.0,
+            fragment_square_count=3,
+        )
+
+    with pytest.raises(ValueError, match="2/pi"):
+        ObstructionFieldSpec(
+            pattern_kind="square_fragments",
+            extra_loss_db=1.0,
+            square_area_fraction=0.8,
+            fragment_square_count=4,
+        )
+
     with pytest.raises(ValueError, match="vertical_band_count"):
         ObstructionFieldSpec(
             pattern_kind="vertical_bands",
@@ -155,4 +276,3 @@ def test_evaluate_obstruction_log_shadowing_rejects_bad_location_shape() -> None
             beam=beam,
             spec=spec,
         )
-

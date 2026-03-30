@@ -5,6 +5,7 @@ ground truth when evaluating model-based dimensioning methods.
 
 Supported obstruction patterns:
 - centered square (high-loss square at beam center),
+- square fragments (equal-area squares spread on a centered lattice),
 - vertical bands (alternating high-loss strips),
 - multiple circles (union of several high-loss disks).
 
@@ -47,7 +48,12 @@ from sim.stochastic.user_locations import CircularBeam
 # does not enforce it automatically at runtime. Runtime checking still happens
 # later in ``evaluate_obstruction_log_shadowing`` when the label is matched to a
 # specific obstruction geometry and unsupported values raise ``ValueError``.
-PatternKind = Literal["square_center", "vertical_bands", "multi_circles"]
+PatternKind = Literal[
+    "square_center",
+    "square_fragments",
+    "vertical_bands",
+    "multi_circles",
+]
 
 
 @dataclass(frozen=True)
@@ -59,6 +65,12 @@ class ObstructionFieldSpec:
         One axis-aligned square centered at the beam center. Users inside that
         square receive extra loss; users outside it do not. The square size is
         chosen through ``square_area_fraction`` relative to total beam area.
+    - ``square_fragments``:
+        ``fragment_square_count = n^2`` equal axis-aligned squares are placed
+        on an ``n x n`` centered lattice. The total blocked area is still
+        ``square_area_fraction * beam.area``; only the fragmentation changes.
+        ``fragment_square_count = 1`` therefore reduces to the centered-square
+        case. Larger counts preserve total blocked area while spreading it out.
     - ``vertical_bands``:
         The beam diameter is split into vertical strips from left to right
         using the x-coordinate. Alternate strips are obstructed, creating a
@@ -71,14 +83,22 @@ class ObstructionFieldSpec:
     Fields:
         pattern_kind:
             Obstruction geometry to apply in the circular beam.
+        scenario_label:
+            Optional human-readable label for reporting. If omitted, downstream
+            experiment code falls back to ``pattern_kind``.
         extra_loss_db:
             Additional attenuation magnitude (in dB) applied inside obstructed
             regions. Must be non-negative.
         base_log_shadowing:
             Baseline natural-log shadowing value outside obstruction regions.
         square_area_fraction:
-            For ``square_center`` pattern only. Target square area fraction of
-            full beam area (e.g., 0.5 means square area is ~50% of beam area).
+            For ``square_center`` and ``square_fragments`` patterns. Target
+            total blocked area fraction of full beam area (e.g., 0.5 means the
+            obstructed union has ~50% of beam area).
+        fragment_square_count:
+            For ``square_fragments`` pattern only. Number of equal-area squares
+            used to realize the blocked set. This must be a perfect square so
+            the fragments can be placed on a centered lattice.
         vertical_band_count:
             For ``vertical_bands`` pattern only. Number of vertical bands across
             beam diameter. Obstruction is applied to alternating bands.
@@ -96,18 +116,37 @@ class ObstructionFieldSpec:
 
     pattern_kind: PatternKind
     extra_loss_db: float
+    scenario_label: str | None = None
     base_log_shadowing: float = 0.0
     square_area_fraction: float = 0.5
+    fragment_square_count: int = 1
     vertical_band_count: int = 6
     multi_circle_count: int = 4
     multi_circle_radius_ratio: float = 0.22
     multi_circle_ring_ratio: float = 0.52
 
     def __post_init__(self) -> None:
+        if self.scenario_label is not None and self.scenario_label.strip() == "":
+            raise ValueError("scenario_label must be non-empty when provided")
         if self.extra_loss_db < 0.0:
             raise ValueError("extra_loss_db must be non-negative")
         if self.square_area_fraction <= 0.0 or self.square_area_fraction > 1.0:
             raise ValueError("square_area_fraction must be in (0, 1]")
+        if self.fragment_square_count <= 0:
+            raise ValueError("fragment_square_count must be positive")
+        fragment_grid_width = math.isqrt(self.fragment_square_count)
+        if fragment_grid_width * fragment_grid_width != self.fragment_square_count:
+            raise ValueError("fragment_square_count must be a perfect square")
+        # For the centered-lattice placement used by ``square_fragments``,
+        # the total blocked area fraction must stay below the area of the
+        # beam's largest inscribed square. This guarantees every fragment fits
+        # inside the beam while leaving a valid non-overlapping lattice layout.
+        if self.pattern_kind == "square_fragments":
+            max_fraction_for_lattice = 2.0 / math.pi
+            if self.square_area_fraction > max_fraction_for_lattice:
+                raise ValueError(
+                    "square_area_fraction must be <= 2/pi for square_fragments"
+                )
         if self.vertical_band_count <= 0:
             raise ValueError("vertical_band_count must be positive")
         if self.multi_circle_count <= 0:
@@ -164,6 +203,13 @@ def evaluate_obstruction_log_shadowing(
     # Build obstruction mask per selected pattern.
     if spec.pattern_kind == "square_center":
         mask = _mask_square_center(x, beam, spec.square_area_fraction)
+    elif spec.pattern_kind == "square_fragments":
+        mask = _mask_square_fragments(
+            x,
+            beam,
+            total_area_fraction=spec.square_area_fraction,
+            square_count=spec.fragment_square_count,
+        )
     elif spec.pattern_kind == "vertical_bands":
         mask = _mask_vertical_bands(x, beam, spec.vertical_band_count)
     elif spec.pattern_kind == "multi_circles":
@@ -198,6 +244,49 @@ def _mask_square_center(
     return (
         np.abs(x - beam.x_center) <= half
     ) & (np.abs(y - beam.y_center) <= half)
+
+
+def _mask_square_fragments(
+    user_locations: np.ndarray,
+    beam: CircularBeam,
+    *,
+    total_area_fraction: float,
+    square_count: int,
+) -> np.ndarray:
+    """Return mask for equal-area square fragments on a centered lattice.
+
+    The placement rule is intentionally deterministic:
+    - ``square_count = n^2`` defines an ``n x n`` lattice,
+    - all squares have the same area,
+    - the union area is ``total_area_fraction * beam.area``,
+    - lattice centers are spread as far apart as possible while keeping every
+      square fully inside the beam.
+
+    This makes fragmentation the only changing geometric degree of freedom:
+    total blocked area is fixed, while the number of disconnected pieces
+    changes with ``square_count``.
+    """
+
+    grid_width = math.isqrt(square_count)
+    target_area = total_area_fraction * beam.area
+    side = math.sqrt(target_area / square_count)
+    half = side / 2.0
+
+    if grid_width == 1:
+        axis_offsets = np.array([0.0], dtype=float)
+    else:
+        max_center_offset = (beam.radius / math.sqrt(2.0)) - half
+        axis_offsets = np.linspace(-max_center_offset, max_center_offset, grid_width)
+
+    x = user_locations[:, 0]
+    y = user_locations[:, 1]
+    mask = np.zeros(user_locations.shape[0], dtype=bool)
+    for dx in axis_offsets:
+        for dy in axis_offsets:
+            cx = beam.x_center + float(dx)
+            cy = beam.y_center + float(dy)
+            mask |= (np.abs(x - cx) <= half) & (np.abs(y - cy) <= half)
+    return mask
 
 
 def _mask_vertical_bands(

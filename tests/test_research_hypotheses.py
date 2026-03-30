@@ -30,7 +30,7 @@ How to read the experimental procedure in this file:
    - one budget grid,
    - one uniform model,
    - one Gaussian model,
-   - several obstruction scenarios.
+   - one controlled family of equal-area square-fragmentation scenarios.
 2. For budget-level truth-anchored comparison:
    - run repeated PPP trials;
    - on each trial, compute the truth-side total demand from the deterministic
@@ -167,14 +167,14 @@ def _write_research_results(
     _table_path().write_text("\n".join(raw_table_lines) + "\n")
 
 
-def _research_scale_setup() -> tuple[
+def _fragmentation_experiment_setup() -> tuple[
     ExperimentConfig,
     CircularBeam,
     PRBDemandParams,
     tuple[ObstructionFieldSpec, ...],
     tuple[int, ...],
 ]:
-    """Return one documented research-scale setup for research-hypothesis tests.
+    """Return the first controlled fragmentation experiment configuration.
 
     Chosen regime:
     - beam radius = 10, so beam area is ``pi * 10^2 ~= 314.16``;
@@ -184,7 +184,17 @@ def _research_scale_setup() -> tuple[
     - the tested budget grid runs from 500 to 6000, which stays below
       ``20 * expected_users ~= 6283``.
     - the outer experiment uses 10 independent seed paths and 100 PPP trials
-      per seed-scenario block.
+      per seed-scenario block;
+    - the truth-side scenarios are a fixed-area square-fragmentation family
+      with fragment counts ``K in {1, 4, 9, 16, 25}``.
+
+    Fragmentation axis:
+    - ``K = 1`` is one large square, i.e. the non-fragmented case;
+    - larger ``K`` values split the same total blocked area into more equal
+      squares, spread on a centered lattice inside the beam;
+    - extra loss and total blocked area are held fixed across all ``K`` so the
+      intended changing variable is spatial fragmentation, not blocked-area
+      magnitude.
 
     Two levels of randomness are important:
     - outer randomness comes from the PPP user geometry changing from trial to
@@ -216,10 +226,10 @@ def _research_scale_setup() -> tuple[
       not alter the rest of the experiment flow or introduce scenario-specific
       fitting logic.
 
-    The values here are intended as a stable research-scale baseline for
-    hypothesis testing. They are not yet claimed to be the final publication
-    configuration, but they are explicitly chosen to live in the same part of
-    the parameter space as the intended study.
+    The values here are intended as the first stable baseline for the
+    fragmentation experiment. They are not yet claimed to be the final
+    publication configuration, but they are explicit and controlled enough to
+    support scenario-by-scenario comparisons.
     """
 
     # Simplest fair calibration step:
@@ -269,28 +279,23 @@ def _research_scale_setup() -> tuple[
         snr0_linear=1.0,
         eta_min=0.1,
     )
-    scenarios = (
-        ObstructionFieldSpec(pattern_kind="square_center", extra_loss_db=10.0),
+    scenarios = tuple(
         ObstructionFieldSpec(
-            pattern_kind="vertical_bands",
+            pattern_kind="square_fragments",
+            scenario_label=f"square_fragments_k{square_count:02d}",
             extra_loss_db=10.0,
-            vertical_band_count=6,
-        ),
-        ObstructionFieldSpec(
-            pattern_kind="multi_circles",
-            extra_loss_db=10.0,
-            multi_circle_count=4,
-            multi_circle_radius_ratio=0.18,
-            multi_circle_ring_ratio=0.45,
-        ),
+            square_area_fraction=0.5,
+            fragment_square_count=square_count,
+        )
+        for square_count in (1, 4, 9, 16, 25)
     )
-    # Standard seed set for this research-scale test regime.
+    # Standard seed set for this first fragmentation regime.
     base_seeds = tuple(range(101, 111))
     return config, beam, prb_params, scenarios, base_seeds
 
 
-def test_research_scale_truth_anchored_run_uses_few_hundred_users_and_bounded_grid() -> None:
-    """Run a truth-anchored research-hypothesis setup in a study-scale regime.
+def test_fragmentation_experiment_truth_anchored_run_uses_few_hundred_users_and_bounded_grid() -> None:
+    """Run one truth-anchored fragmentation block in the study-scale regime.
 
     Why this matters:
     - this test checks that the runner can operate in a regime with a few
@@ -305,11 +310,13 @@ def test_research_scale_truth_anchored_run_uses_few_hundred_users_and_bounded_gr
     - the tested budget grid stays below 20 times expected user count;
     - the standard research-scale setup uses 100 PPP trials per repeated-trial
       block;
+    - the scenario family holds total blocked area fixed while varying fragment
+      count;
     - a truth-anchored comparison run returns required budgets that lie on the
       tested grid for both truth and models.
     """
 
-    config, beam, prb_params, scenarios, _base_seeds = _research_scale_setup()
+    config, beam, prb_params, scenarios, _base_seeds = _fragmentation_experiment_setup()
     expected_users = config.ppp_intensity_lambda * beam.area
 
     assert 200.0 <= expected_users <= 400.0
@@ -317,29 +324,32 @@ def test_research_scale_truth_anchored_run_uses_few_hundred_users_and_bounded_gr
     assert prb_params.max_prb_per_user == 10
     assert max(config.candidate_rb_budgets) <= 20.0 * expected_users
     assert config.n_trials == 100
+    assert {scenario.pattern_kind for scenario in scenarios} == {"square_fragments"}
+    assert {scenario.square_area_fraction for scenario in scenarios} == {0.5}
+    assert tuple(scenario.fragment_square_count for scenario in scenarios) == (1, 4, 9, 16, 25)
 
     result = run_truth_anchored_attenuation_comparison(
         config=config,
         beam=beam,
         prb_params=prb_params,
         ground_truth_spec=scenarios[0],
-        scenario_label="research_square_center",
+        scenario_label="square_fragments_k01",
     )
 
-    assert result.scenario_label == "research_square_center"
+    assert result.scenario_label == "square_fragments_k01"
     assert result.ground_truth_required_budget in set(config.candidate_rb_budgets)
     for estimate in result.model_comparison.estimates:
         assert estimate.required_budget in set(config.candidate_rb_budgets)
 
 
-def test_research_scale_certificate_runs_across_multiple_scenarios() -> None:
-    """Run the pooled certificate in the same research-scale regime.
+def test_fragmentation_experiment_certificate_runs_across_multiple_fragment_counts() -> None:
+    """Run the pooled certificate across the controlled fragmentation family.
 
     Why this matters:
     - the certificate runner is the part of the code most closely tied to the
       current research question;
-    - this test documents and checks the current pooling behavior across
-      scenarios, seeds, and trials in a non-trivial user regime;
+    - this test documents and checks pooling across fragment counts, seeds,
+      and trials in a non-trivial user regime;
     - it uses the simplest possible fair calibration step: uniform and
       Gaussian share the same target mean/variance before any stronger fitting
       ideas are considered;
@@ -349,13 +359,15 @@ def test_research_scale_certificate_runs_across_multiple_scenarios() -> None:
       Gaussian should or should not outperform uniform.
 
     Checks performed:
-    - the number of Bernoulli outcomes matches scenarios x seeds x trials;
+    - the number of Bernoulli outcomes matches fragment-count scenarios x seeds
+      x trials;
     - the certificate summary fields are internally coherent;
-    - all requested scenario labels appear in the returned trial outcomes;
+    - all requested fragment-count scenario labels appear in the returned trial
+      outcomes;
     - the same run writes both a structured summary snapshot and raw tables.
     """
 
-    config, beam, prb_params, scenarios, base_seeds = _research_scale_setup()
+    config, beam, prb_params, scenarios, base_seeds = _fragmentation_experiment_setup()
 
     cert = run_gaussian_vs_uniform_certificate(
         config=config,
@@ -378,7 +390,13 @@ def test_research_scale_certificate_runs_across_multiple_scenarios() -> None:
     assert 0.0 <= cert.lcb <= 1.0
 
     scenario_labels = {outcome.scenario_label for outcome in cert.outcomes}
-    assert scenario_labels == {"square_center", "vertical_bands", "multi_circles"}
+    assert scenario_labels == {
+        "square_fragments_k01",
+        "square_fragments_k04",
+        "square_fragments_k09",
+        "square_fragments_k16",
+        "square_fragments_k25",
+    }
 
     raw_table_lines: list[str] = [
         "[trial_level_certificate_rows]",
@@ -458,7 +476,9 @@ def test_research_scale_certificate_runs_across_multiple_scenarios() -> None:
             ]
         )
 
-    scenarios_by_label = {scenario.pattern_kind: scenario for scenario in scenarios}
+    scenarios_by_label = {
+        (scenario.scenario_label or scenario.pattern_kind): scenario for scenario in scenarios
+    }
     for scenario_label in sorted(scenario_labels):
         scenario = scenarios_by_label[scenario_label]
         for seed in base_seeds:
@@ -495,7 +515,7 @@ def test_research_scale_certificate_runs_across_multiple_scenarios() -> None:
     raw_table_lines.append("")
 
     _write_research_results(
-        experiment_name="research_scale_v1",
+        experiment_name="fragmentation_experiment_v1",
         config=config,
         beam=beam,
         prb_params=prb_params,
@@ -509,8 +529,10 @@ def test_research_scale_certificate_runs_across_multiple_scenarios() -> None:
     summary_text = _summary_path().read_text()
     table_text = _table_path().read_text()
     assert "[pooled_certificate]" in summary_text
-    assert "[scenario.square_center]" in summary_text
-    assert "[scenario.vertical_bands]" in summary_text
-    assert "[scenario.multi_circles]" in summary_text
+    assert "[scenario.square_fragments_k01]" in summary_text
+    assert "[scenario.square_fragments_k04]" in summary_text
+    assert "[scenario.square_fragments_k09]" in summary_text
+    assert "[scenario.square_fragments_k16]" in summary_text
+    assert "[scenario.square_fragments_k25]" in summary_text
     assert "[trial_level_certificate_rows]" in table_text
     assert "[seed_level_dimensioning_rows]" in table_text

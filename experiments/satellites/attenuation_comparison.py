@@ -307,7 +307,7 @@ def run_truth_anchored_attenuation_comparison(
     )
 
     return TruthAnchoredComparisonResult(
-        scenario_label=scenario_label or ground_truth_spec.pattern_kind,
+        scenario_label=scenario_label or _scenario_label(ground_truth_spec),
         ground_truth_outage_by_budget=true_outage_by_budget,
         ground_truth_required_budget=true_required_budget,
         model_comparison=model_comparison,
@@ -701,7 +701,7 @@ def run_gaussian_vs_uniform_certificate(
 
                 trial_outcomes.append(
                     GaussianUniformTrialOutcome(
-                        scenario_label=scenario.pattern_kind,
+                        scenario_label=_scenario_label(scenario),
                         base_seed=int(seed),
                         trial_index=trial_index,
                         true_total_demand=int(true_total_demand),
@@ -780,6 +780,19 @@ def _model_by_id(models: tuple[ModelSpec, ...], model_id: str) -> ModelSpec:
         if model.model_id == model_id:
             return model
     raise ValueError(f"model_id not found: {model_id}")
+
+
+def _scenario_label(spec: ObstructionFieldSpec) -> str:
+    """Return the reporting label for one obstruction scenario.
+
+    Most scenarios can be identified by ``pattern_kind`` alone. Parameterized
+    sweeps, such as fragmentation studies, need multiple scenarios with the
+    same pattern kind but different geometry parameters. ``scenario_label``
+    keeps those runs distinct in result tables without expanding the pattern
+    enum for every sweep value.
+    """
+
+    return spec.scenario_label or spec.pattern_kind
 
 
 def _true_total_prb_demand_for_trial(

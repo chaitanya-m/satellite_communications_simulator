@@ -250,8 +250,17 @@ def test_run_gaussian_vs_uniform_certificate_smoke() -> None:
         eta_min=0.1,
     )
     scenarios = (
-        ObstructionFieldSpec(pattern_kind="square_center", extra_loss_db=10.0),
-        ObstructionFieldSpec(pattern_kind="vertical_bands", extra_loss_db=10.0, vertical_band_count=6),
+        ObstructionFieldSpec(
+            pattern_kind="square_center",
+            scenario_label="square_center_case",
+            extra_loss_db=10.0,
+        ),
+        ObstructionFieldSpec(
+            pattern_kind="vertical_bands",
+            scenario_label="vertical_bands_case",
+            extra_loss_db=10.0,
+            vertical_band_count=6,
+        ),
     )
     base_seeds = (101, 202, 303)
 
@@ -276,3 +285,7 @@ def test_run_gaussian_vs_uniform_certificate_smoke() -> None:
     assert first.true_total_demand >= 0
     assert first.uniform_abs_demand_error >= 0.0
     assert first.gaussian_abs_demand_error >= 0.0
+    assert {outcome.scenario_label for outcome in cert.outcomes} == {
+        "square_center_case",
+        "vertical_bands_case",
+    }

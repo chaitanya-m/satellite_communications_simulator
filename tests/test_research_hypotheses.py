@@ -138,6 +138,34 @@ def _truth_mean_log_for_binary_obstruction(
     return base_log_shadowing - (blocked_area_fraction * loss_shift)
 
 
+def _truth_variance_log_for_binary_obstruction(
+    *,
+    extra_loss_db: float,
+    blocked_area_fraction: float,
+) -> float:
+    """Return the truth-side log-shadowing variance for the binary family.
+
+    In the current obstruction family, the truth field takes two values:
+    - ``0`` on the unblocked fraction ``1 - p`` of the beam;
+    - ``-loss_shift`` on the blocked fraction ``p``,
+      where ``loss_shift = ln(10) / 10 * extra_loss_db``.
+
+    That makes the variance explicit:
+
+        Var(G_truth) = p * (1 - p) * loss_shift^2.
+
+    Why this helper exists:
+    - after mean matching, variance is the next obvious marginal confound to
+      remove;
+    - for the current binary obstruction family, the truth variance is again
+      analytic, so there is no reason to estimate it numerically at this
+      stage.
+    """
+
+    loss_shift = (math.log(10.0) / 10.0) * extra_loss_db
+    return blocked_area_fraction * (1.0 - blocked_area_fraction) * (loss_shift ** 2)
+
+
 def _write_research_results(
     *,
     experiment_name: str,
@@ -408,27 +436,25 @@ def _fragmentation_experiment_setup() -> tuple[
       model's predicted mean total demand.
 
     Calibration policy used here:
-    - keep the first calibration step as small as possible by matching only
-      the shared model mean to the truth family while leaving the common
-      comparison variance fixed;
-    - for the Gaussian model, that mean is supplied directly as ``mean_log``
-      because the Gaussian parameterization exposes it explicitly;
+    - match the first two marginal moments of the shared comparison models to
+      the current 50%-blocked binary truth family;
+    - for the Gaussian model, those moments are supplied directly as
+      ``mean_log`` and ``variance_log`` because the Gaussian parameterization
+      exposes them explicitly;
     - for the uniform model, mean is not supplied directly: the model is
       parameterized by ``low_log`` and ``high_log`` instead, so those bounds
       must be computed from the chosen mean and comparison variance;
     - for ``U ~ Uniform[a, b]``, we have
       ``E[U] = (a + b) / 2`` and ``Var(U) = (b - a)^2 / 12``;
-    - solving those equations for target mean ``m`` and chosen variance ``v``
+    - solving those equations for target mean ``m`` and target variance ``v``
       gives half-width ``sqrt(3v)``, so
       ``low_log = m - sqrt(3v)`` and ``high_log = m + sqrt(3v)``.
 
-    Why this is the first calibration step:
-    - without at least matching the truth-side mean, the comparison is
-      confounded by a large one-point bias before we even get to the intended
-      question of model structure;
-    - this is still the simplest possible calibration change because it only
-      shifts the shared mean and does not alter the rest of the experiment
-      flow or introduce scenario-specific fitting logic.
+    Why this is still a small step:
+    - after mean matching, variance was the next dominant one-point mismatch;
+    - both moments are analytic for the current binary truth family, so this
+      calibration still does not alter the rest of the experiment flow or
+      introduce scenario-specific fitting logic.
 
     The values here are intended as the first stable baseline for the
     fragmentation experiment. They are not yet claimed to be the final
@@ -436,19 +462,22 @@ def _fragmentation_experiment_setup() -> tuple[
     support scenario-by-scenario comparisons.
     """
 
-    # Simplest calibration step:
-    # match the shared model mean to the current 50%-blocked truth family so
-    # the comparison is not dominated by a large one-point bias before we
-    # study anything more subtle about spatial structure.
+    # Next smallest calibration step:
+    # match the first two moments of the shared comparison models to the
+    # current 50%-blocked truth family so the comparison is not dominated by
+    # a large one-point bias or scale mismatch before we study anything more
+    # subtle about spatial structure.
     comparison_mean_log = _truth_mean_log_for_binary_obstruction(
         extra_loss_db=10.0,
         blocked_area_fraction=0.5,
     )
-    comparison_variance_log = 0.4
+    comparison_variance_log = _truth_variance_log_for_binary_obstruction(
+        extra_loss_db=10.0,
+        blocked_area_fraction=0.5,
+    )
     # Uniform does have variance, but it is implied by its interval rather than
-    # supplied directly. We keep the comparison variance fixed at 0.4 for now;
-    # for target variance v, the required half-width is sqrt(3v), because
-    # Var(Uniform[m-h, m+h]) = h^2 / 3 = v.
+    # supplied directly. For target variance v, the required half-width is
+    # sqrt(3v), because Var(Uniform[m-h, m+h]) = h^2 / 3 = v.
     uniform_half_width = math.sqrt(3.0 * comparison_variance_log)
 
     config = ExperimentConfig(
@@ -530,6 +559,13 @@ def _blocked_area_experiment_setup() -> tuple[
     - same PRB mapping,
     - same Gaussian/uniform shared-moment calibration,
     - same seed/trial structure.
+
+    Current limitation:
+    - the shared calibration imported from the fragmentation setup is exact
+      for the 50%-blocked family and only a reference calibration for the
+      smaller blocked-area cases;
+    - full scenario-by-scenario moment matching for the area sweep is the
+      next fairness step after this shared-variance update.
     """
 
     config, beam, prb_params, _scenarios, base_seeds = _fragmentation_experiment_setup()

@@ -611,6 +611,81 @@ def _altitude_experiment_setup() -> tuple[
     return config, beam, prb_params, altitudes, base_seeds
 
 
+def _config_with_gaussian_corr_length(
+    config: ExperimentConfig,
+    *,
+    corr_length: float,
+) -> ExperimentConfig:
+    """Return a copy of the experiment config with a new Gaussian length scale.
+
+    Why this helper exists:
+    - after matching the field-wide first and second moments, the main
+      remaining Gaussian parameter is the correlation length;
+    - the correlation-length experiment should vary only that one parameter and
+      keep the rest of the calibrated setup fixed.
+    """
+
+    uniform_model = next(model for model in config.models if model.kind == "uniform")
+    gaussian_model = next(model for model in config.models if model.kind == "gaussian")
+
+    return ExperimentConfig(
+        ppp_intensity_lambda=config.ppp_intensity_lambda,
+        outage_target_epsilon=config.outage_target_epsilon,
+        candidate_rb_budgets=config.candidate_rb_budgets,
+        n_trials=config.n_trials,
+        base_seed=config.base_seed,
+        models=(
+            uniform_model,
+            ModelSpec(
+                model_id=gaussian_model.model_id,
+                kind=gaussian_model.kind,
+                gaussian=GaussianParams(
+                    mean_log=gaussian_model.gaussian.mean_log,
+                    variance_log=gaussian_model.gaussian.variance_log,
+                    corr_length=corr_length,
+                ),
+            ),
+        ),
+    )
+
+
+def _corr_length_experiment_setup() -> tuple[
+    ExperimentConfig,
+    CircularBeam,
+    PRBDemandParams,
+    tuple[float, ...],
+    tuple[int, ...],
+    ObstructionFieldSpec,
+]:
+    """Return the first fixed-altitude correlation-length sweep.
+
+    Scientific axis:
+    - hold altitude fixed at ``250`` units;
+    - hold blocked area fixed at ``0.50``;
+    - hold the truth scenario to one large square (``K=1``), since
+      fragmentation has already been shown to be inert under the current truth
+      model;
+    - vary only the Gaussian correlation length.
+
+    Why this is the next step:
+    - the Gaussian sampler already uses a covariance matrix;
+    - after matching mean and variance, the main remaining Gaussian parameter
+      is the correlation length controlling how quickly covariance decays with
+      distance.
+    """
+
+    config, beam, prb_params, _scenarios, base_seeds = _fragmentation_experiment_setup()
+    corr_lengths = (0.5, 1.0, 2.0, 4.0, 8.0)
+    scenario = ObstructionFieldSpec(
+        pattern_kind="square_fragments",
+        scenario_label="corr_length_area50_k01",
+        extra_loss_db=10.0,
+        square_area_fraction=0.5,
+        fragment_square_count=1,
+    )
+    return config, beam, prb_params, corr_lengths, base_seeds, scenario
+
+
 def test_fragmentation_experiment_truth_anchored_run_uses_few_hundred_users_and_bounded_grid() -> None:
     """Run one truth-anchored fragmentation block in the study-scale regime.
 
@@ -1031,5 +1106,191 @@ def test_altitude_experiment_sweeps_from_balloon_height_to_upper_leo() -> None:
     assert "[altitude.450]" in summary_text
     assert "[scenario.alt_050_k01]" in summary_text
     assert "[scenario.alt_450_k04]" in summary_text
+    assert "[trial_level_certificate_rows]" in table_text
+    assert "[seed_level_dimensioning_rows]" in table_text
+
+
+def test_corr_length_experiment_tunes_gaussian_correlation_at_fixed_altitude_250() -> None:
+    """Sweep Gaussian correlation length at fixed altitude and fixed blockage.
+
+    Why this matters:
+    - the Gaussian sampler already uses a covariance matrix built from user
+      locations, so after mean and variance matching the main remaining
+      Gaussian degree of freedom is ``corr_length``;
+    - fixing altitude at ``250`` and using one 50%-blocked square isolates that
+      one spatial parameter without mixing in altitude or fragmentation again.
+
+    Checks performed:
+    - the correlation-length grid matches the intended sweep;
+    - the altitude is fixed at ``250`` units throughout;
+    - the pooled outcome count matches correlation lengths x seeds x trials;
+    - the written summary contains sections for the shortest and longest
+      correlation lengths.
+    """
+
+    base_config, beam, prb_params, corr_lengths, base_seeds, scenario = (
+        _corr_length_experiment_setup()
+    )
+
+    assert corr_lengths == (0.5, 1.0, 2.0, 4.0, 8.0)
+    assert prb_params.satellite_altitude_units == 250.0
+
+    all_outcomes = []
+    per_scenario_lines: list[str] = []
+    raw_table_lines: list[str] = [
+        "[trial_level_certificate_rows]",
+        (
+            "corr_length,scenario_label,base_seed,trial_index,true_total_demand,"
+            "uniform_predicted_total_demand,gaussian_predicted_total_demand,"
+            "uniform_abs_demand_error,gaussian_abs_demand_error,"
+            "gaussian_better,tie"
+        ),
+    ]
+
+    for corr_length in corr_lengths:
+        config = _config_with_gaussian_corr_length(base_config, corr_length=corr_length)
+        cert = run_gaussian_vs_uniform_certificate(
+            config=config,
+            beam=beam,
+            prb_params=prb_params,
+            scenarios=(scenario,),
+            base_seeds=base_seeds,
+            alpha=0.05,
+            threshold=0.5,
+            prediction_draws_per_trial=10,
+        )
+        all_outcomes.extend(cert.outcomes)
+
+        for outcome in cert.outcomes:
+            raw_table_lines.append(
+                ",".join(
+                    [
+                        _format_float(corr_length),
+                        outcome.scenario_label,
+                        str(outcome.base_seed),
+                        str(outcome.trial_index),
+                        str(outcome.true_total_demand),
+                        _format_float(outcome.uniform_predicted_total_demand),
+                        _format_float(outcome.gaussian_predicted_total_demand),
+                        _format_float(outcome.uniform_abs_demand_error),
+                        _format_float(outcome.gaussian_abs_demand_error),
+                        str(outcome.gaussian_better),
+                        str(outcome.tie),
+                    ]
+                )
+            )
+
+        corr_cert = certify_gaussian_better_from_error_pairs(
+            error_pairs=tuple(
+                (
+                    outcome.uniform_abs_demand_error,
+                    outcome.gaussian_abs_demand_error,
+                )
+                for outcome in cert.outcomes
+            ),
+            alpha=0.05,
+            threshold=0.5,
+            tie_policy="uniform_wins",
+        )
+        per_scenario_lines.extend(
+            [
+                f"[corr_length.{str(corr_length).replace('.', 'p')}]",
+                f"successes = {corr_cert.successes}",
+                f"trials = {corr_cert.trials}",
+                f"ties = {corr_cert.ties}",
+                f"p_hat = {_format_float(corr_cert.p_hat)}",
+                f"lcb = {_format_float(corr_cert.lcb)}",
+                f"certified = {corr_cert.certified}",
+                f"mean_uniform_abs_error = {_format_float(mean(outcome.uniform_abs_demand_error for outcome in cert.outcomes))}",
+                f"mean_gaussian_abs_error = {_format_float(mean(outcome.gaussian_abs_demand_error for outcome in cert.outcomes))}",
+                "",
+            ]
+        )
+
+    raw_table_lines.append("")
+    raw_table_lines.extend(
+        [
+            "[seed_level_dimensioning_rows]",
+            (
+                "corr_length,scenario_label,base_seed,truth_required_budget,"
+                "uniform_required_budget,gaussian_required_budget"
+            ),
+        ]
+    )
+    for corr_length in corr_lengths:
+        config = _config_with_gaussian_corr_length(base_config, corr_length=corr_length)
+        for seed in base_seeds:
+            seed_config = ExperimentConfig(
+                ppp_intensity_lambda=config.ppp_intensity_lambda,
+                outage_target_epsilon=config.outage_target_epsilon,
+                candidate_rb_budgets=config.candidate_rb_budgets,
+                n_trials=config.n_trials,
+                base_seed=int(seed),
+                models=config.models,
+            )
+            dimensioning_result = run_truth_anchored_attenuation_comparison(
+                config=seed_config,
+                beam=beam,
+                prb_params=prb_params,
+                ground_truth_spec=scenario,
+                scenario_label=scenario.scenario_label,
+            )
+            budgets_by_model = {
+                estimate.model_id: estimate.required_budget
+                for estimate in dimensioning_result.model_comparison.estimates
+            }
+            raw_table_lines.append(
+                ",".join(
+                    [
+                        _format_float(corr_length),
+                        scenario.scenario_label,
+                        str(seed),
+                        str(dimensioning_result.ground_truth_required_budget),
+                        str(budgets_by_model["uniform_baseline"]),
+                        str(budgets_by_model["gaussian_l1"]),
+                    ]
+                )
+            )
+    raw_table_lines.append("")
+
+    pooled_certificate = certify_gaussian_better_from_error_pairs(
+        error_pairs=tuple(
+            (
+                outcome.uniform_abs_demand_error,
+                outcome.gaussian_abs_demand_error,
+            )
+            for outcome in all_outcomes
+        ),
+        alpha=0.05,
+        threshold=0.5,
+        tie_policy="uniform_wins",
+    )
+    _write_research_results(
+        experiment_name="corr_length_experiment_v1",
+        config=base_config,
+        beam=beam,
+        prb_params=prb_params,
+        base_seeds=base_seeds,
+        prediction_draws_per_trial=10,
+        pooled_certificate=pooled_certificate,
+        per_scenario_lines=per_scenario_lines,
+        raw_table_lines=raw_table_lines,
+        extra_experiment_lines=[
+            f"pathloss_exponent = {_format_float(prb_params.pathloss_exponent)}",
+            f"altitude_units = {_format_float(prb_params.satellite_altitude_units)}",
+            "corr_lengths = 0.5,1.0,2.0,4.0,8.0",
+        ],
+    )
+
+    expected_outcomes = len(corr_lengths) * len(base_seeds) * base_config.n_trials
+    assert pooled_certificate.trials == expected_outcomes
+    assert 0.0 <= pooled_certificate.p_hat <= 1.0
+    assert 0.0 <= pooled_certificate.lcb <= 1.0
+
+    summary_text = _summary_path().read_text()
+    table_text = _table_path().read_text()
+    assert "name = corr_length_experiment_v1" in summary_text
+    assert "[corr_length.0p5]" in summary_text
+    assert "[corr_length.8p0]" in summary_text
     assert "[trial_level_certificate_rows]" in table_text
     assert "[seed_level_dimensioning_rows]" in table_text

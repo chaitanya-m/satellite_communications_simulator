@@ -19,7 +19,8 @@ math: mathjax
 - Input: required user bit rate $c$.
 - Input: outage target $\varepsilon$.
 - Input: marginal SNR distribution $F_{\Gamma}$.
-- Input: beam / load assumptions.
+- $Optional\ Input: beam / load \  assumptions.$
+- Equivalently, the same input can be expressed as a marginal log-shadowing distribution, which is the form used internally.
 
 ---
 

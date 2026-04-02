@@ -21,6 +21,7 @@ import pytest
 
 from experiments.satellites.attenuation_contracts import (
     ComparisonResult,
+    DiscreteLogShadowingMarginal,
     ExperimentConfig,
     GaussianParams,
     GaussianVsUniformCertificateResult,
@@ -66,6 +67,37 @@ def test_experiment_config_round_trip() -> None:
 
     payload = cfg.to_dict()
     restored = ExperimentConfig.from_dict(payload)
+    assert restored == cfg
+
+
+def test_experiment_config_round_trip_with_shared_marginal_models() -> None:
+    """Shared-marginal configs should round-trip through serialization too."""
+
+    marginal = DiscreteLogShadowingMarginal(
+        values_log=(-2.302585093, 0.0),
+        probabilities=(0.5, 0.5),
+    )
+    cfg = ExperimentConfig(
+        ppp_intensity_lambda=50.0,
+        outage_target_epsilon=0.2,
+        candidate_rb_budgets=(200, 400, 600),
+        n_trials=20,
+        base_seed=7,
+        models=(
+            ModelSpec(
+                model_id="uniform_baseline",
+                kind="uniform",
+                uniform=UniformParams(marginal=marginal),
+            ),
+            ModelSpec(
+                model_id="gaussian_l1",
+                kind="gaussian",
+                gaussian=GaussianParams(corr_length=2.0, marginal=marginal),
+            ),
+        ),
+    )
+
+    restored = ExperimentConfig.from_dict(cfg.to_dict())
     assert restored == cfg
 
 
@@ -191,6 +223,16 @@ def test_uniform_params_ordering_constraint() -> None:
     """
     with pytest.raises(ValueError, match="low_log < high_log"):
         UniformParams(low_log=1.0, high_log=1.0)
+
+
+def test_discrete_log_shadowing_marginal_requires_probabilities_to_sum_to_one() -> None:
+    """The shared marginal contract should fail fast on invalid probabilities."""
+
+    with pytest.raises(ValueError, match="sum to 1"):
+        DiscreteLogShadowingMarginal(
+            values_log=(-1.0, 0.0),
+            probabilities=(0.2, 0.7),
+        )
 
 
 def test_truth_anchored_result_validates_probability_bounds() -> None:

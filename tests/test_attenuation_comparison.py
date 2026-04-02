@@ -26,6 +26,7 @@ from experiments.satellites.attenuation_comparison import (
     run_truth_anchored_attenuation_comparison,
 )
 from experiments.satellites.attenuation_contracts import (
+    DiscreteLogShadowingMarginal,
     ExperimentConfig,
     GaussianParams,
     ModelSpec,
@@ -289,3 +290,53 @@ def test_run_gaussian_vs_uniform_certificate_smoke() -> None:
         "square_center_case",
         "vertical_bands_case",
     }
+
+
+def test_truth_anchored_comparison_supports_shared_marginal_models() -> None:
+    """Runner should support the fair shared-marginal comparison mode."""
+
+    marginal = DiscreteLogShadowingMarginal(
+        values_log=(-2.302585093, 0.0),
+        probabilities=(0.5, 0.5),
+    )
+    config = ExperimentConfig(
+        ppp_intensity_lambda=1.5,
+        outage_target_epsilon=0.2,
+        candidate_rb_budgets=(80, 120, 180, 240),
+        n_trials=15,
+        base_seed=321,
+        models=(
+            ModelSpec(
+                model_id="uniform_baseline",
+                kind="uniform",
+                uniform=UniformParams(marginal=marginal),
+            ),
+            ModelSpec(
+                model_id="gaussian_l1",
+                kind="gaussian",
+                gaussian=GaussianParams(corr_length=0.8, marginal=marginal),
+            ),
+        ),
+    )
+    beam = CircularBeam(x_center=0.0, y_center=0.0, radius=1.0)
+    prb_params = PRBDemandParams(
+        required_rate_bps=1_000.0,
+        rb_bandwidth_hz=100.0,
+        snr0_linear=1.0,
+        eta_min=0.1,
+    )
+    truth_spec = ObstructionFieldSpec(
+        pattern_kind="square_center",
+        extra_loss_db=10.0,
+        square_area_fraction=0.5,
+    )
+
+    result = run_truth_anchored_attenuation_comparison(
+        config=config,
+        beam=beam,
+        prb_params=prb_params,
+        ground_truth_spec=truth_spec,
+    )
+
+    assert result.ground_truth_required_budget in set(config.candidate_rb_budgets)
+    assert len(result.model_comparison.estimates) == 2

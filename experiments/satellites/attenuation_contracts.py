@@ -41,6 +41,7 @@ that assembly belong in the experiment-runner docstrings rather than here.
 
 from __future__ import annotations
 
+import math
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, Literal, Tuple
 
@@ -49,47 +50,121 @@ ModelKind = Literal["uniform", "gaussian"]
 
 
 @dataclass(frozen=True)
+class DiscreteLogShadowingMarginal:
+    """Discrete marginal distribution for natural-log shadowing values.
+
+    This is the shared one-point distribution used in the new fair comparison:
+    both the iid uniform-style baseline and the Gaussian spatial model can be
+    driven by exactly the same marginal, while differing only in dependence
+    structure across user locations.
+    """
+
+    values_log: Tuple[float, ...]
+    probabilities: Tuple[float, ...]
+
+    def __post_init__(self) -> None:
+        if len(self.values_log) == 0:
+            raise ValueError("values_log must be non-empty")
+        if len(self.values_log) != len(self.probabilities):
+            raise ValueError("values_log and probabilities must have the same length")
+        if any(not math.isfinite(v) for v in self.values_log):
+            raise ValueError("values_log must contain only finite values")
+        if any((not math.isfinite(p)) or p < 0.0 for p in self.probabilities):
+            raise ValueError("probabilities must be finite and non-negative")
+        if sum(self.probabilities) <= 0.0:
+            raise ValueError("probabilities must contain at least one positive entry")
+        if not math.isclose(sum(self.probabilities), 1.0, rel_tol=0.0, abs_tol=1e-9):
+            raise ValueError("probabilities must sum to 1")
+
+    @property
+    def mean_log(self) -> float:
+        """Return the marginal mean of ``G`` under this discrete distribution."""
+
+        return sum(v * p for v, p in zip(self.values_log, self.probabilities, strict=True))
+
+    @property
+    def variance_log(self) -> float:
+        """Return the marginal variance of ``G`` under this distribution."""
+
+        mean_log = self.mean_log
+        return sum(
+            ((v - mean_log) ** 2) * p
+            for v, p in zip(self.values_log, self.probabilities, strict=True)
+        )
+
+
+@dataclass(frozen=True)
 class GaussianParams:
     """Parameterization for one Gaussian-field simulator variant.
 
-    These parameters describe the stochastic field model used by the Gaussian
-    simulator branch:
-    - ``mean_log`` sets the average natural-log shadowing level,
-    - ``variance_log`` sets how strongly the field fluctuates around that mean,
-    - ``corr_length`` sets the distance scale over which nearby user locations
-      tend to experience similar shadowing.
+    Two Gaussian modes are supported:
+    - direct Gaussian mode: ``mean_log`` and ``variance_log`` define a
+      Gaussian marginal for ``G`` directly;
+    - shared-marginal mode: ``marginal`` defines the one-point distribution,
+      while the Gaussian branch contributes only the spatial dependence.
+
+    In both modes, ``corr_length`` sets the distance scale over which nearby
+    user locations tend to experience similar shadowing.
 
     This object does not perform any simulation itself; it is just the typed
     parameter bundle consumed later by the Gaussian shadowing sampler.
     """
 
-    mean_log: float
-    variance_log: float
     corr_length: float
+    mean_log: float | None = None
+    variance_log: float | None = None
+    marginal: DiscreteLogShadowingMarginal | None = None
 
     def __post_init__(self) -> None:
-        if self.variance_log <= 0.0:
-            raise ValueError("variance_log must be positive")
         if self.corr_length <= 0.0:
             raise ValueError("corr_length must be positive")
+        uses_direct_gaussian = self.mean_log is not None or self.variance_log is not None
+        if self.marginal is None:
+            if not uses_direct_gaussian:
+                raise ValueError(
+                    "gaussian params require either marginal or mean_log/variance_log"
+                )
+            if self.mean_log is None or self.variance_log is None:
+                raise ValueError(
+                    "gaussian direct mode requires both mean_log and variance_log"
+                )
+            if self.variance_log <= 0.0:
+                raise ValueError("variance_log must be positive")
+            return
+        if uses_direct_gaussian:
+            raise ValueError(
+                "gaussian params must use either marginal or mean_log/variance_log, not both"
+            )
 
 
 @dataclass(frozen=True)
 class UniformParams:
     """Uniform baseline on log-shadowing, sampled independently per user.
 
-    This is the simple comparison model. It ignores spatial correlation and
-    treats each user's log-shadowing value as an iid draw from a fixed interval.
-    That makes it a useful baseline when asking whether explicitly modeling a
-    Gaussian field improves prediction or dimensioning.
+    Two baseline modes are supported:
+    - interval mode: iid draws from ``Uniform[low_log, high_log]``;
+    - shared-marginal mode: iid draws from ``marginal`` exactly.
+
+    In both cases, the model ignores spatial correlation and treats each user's
+    log-shadowing value as conditionally independent.
     """
 
-    low_log: float
-    high_log: float
+    low_log: float | None = None
+    high_log: float | None = None
+    marginal: DiscreteLogShadowingMarginal | None = None
 
     def __post_init__(self) -> None:
-        if self.low_log >= self.high_log:
-            raise ValueError("uniform bounds must satisfy low_log < high_log")
+        uses_interval = self.low_log is not None or self.high_log is not None
+        if self.marginal is None:
+            if not uses_interval:
+                raise ValueError("uniform params require either marginal or interval bounds")
+            if self.low_log is None or self.high_log is None:
+                raise ValueError("uniform interval mode requires both low_log and high_log")
+            if self.low_log >= self.high_log:
+                raise ValueError("uniform bounds must satisfy low_log < high_log")
+            return
+        if uses_interval:
+            raise ValueError("uniform params must use either marginal or interval bounds, not both")
 
 
 @dataclass(frozen=True)
@@ -192,9 +267,33 @@ class ExperimentConfig:
     def from_dict(cls, payload: Dict[str, Any]) -> "ExperimentConfig":
         """Deserialize from plain Python data."""
         models: list[ModelSpec] = []
+
+        def _restore_marginal(
+            marginal_payload: Dict[str, Any] | None,
+        ) -> DiscreteLogShadowingMarginal | None:
+            if marginal_payload is None:
+                return None
+            return DiscreteLogShadowingMarginal(
+                values_log=tuple(float(v) for v in marginal_payload["values_log"]),
+                probabilities=tuple(float(v) for v in marginal_payload["probabilities"]),
+            )
+
         for m in payload["models"]:
-            uniform = UniformParams(**m["uniform"]) if m.get("uniform") else None
-            gaussian = GaussianParams(**m["gaussian"]) if m.get("gaussian") else None
+            uniform = None
+            if m.get("uniform"):
+                uniform = UniformParams(
+                    low_log=m["uniform"].get("low_log"),
+                    high_log=m["uniform"].get("high_log"),
+                    marginal=_restore_marginal(m["uniform"].get("marginal")),
+                )
+            gaussian = None
+            if m.get("gaussian"):
+                gaussian = GaussianParams(
+                    corr_length=float(m["gaussian"]["corr_length"]),
+                    mean_log=m["gaussian"].get("mean_log"),
+                    variance_log=m["gaussian"].get("variance_log"),
+                    marginal=_restore_marginal(m["gaussian"].get("marginal")),
+                )
             models.append(
                 ModelSpec(
                     model_id=str(m["model_id"]),

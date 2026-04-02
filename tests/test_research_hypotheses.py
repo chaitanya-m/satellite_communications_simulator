@@ -78,6 +78,7 @@ from experiments.satellites.attenuation_comparison import (
     run_truth_anchored_attenuation_comparison,
 )
 from experiments.satellites.attenuation_contracts import (
+    DiscreteLogShadowingMarginal,
     ExperimentConfig,
     GaussianParams,
     GaussianVsUniformCertificateResult,
@@ -164,6 +165,123 @@ def _truth_variance_log_for_binary_obstruction(
 
     loss_shift = (math.log(10.0) / 10.0) * extra_loss_db
     return blocked_area_fraction * (1.0 - blocked_area_fraction) * (loss_shift ** 2)
+
+
+def _truth_marginal_log_for_binary_obstruction(
+    *,
+    extra_loss_db: float,
+    blocked_area_fraction: float,
+    base_log_shadowing: float = 0.0,
+) -> DiscreteLogShadowingMarginal:
+    """Return the exact truth-side marginal for the current binary family.
+
+    The current square truth is binary in log-shadowing:
+    - blocked points take ``base_log_shadowing - loss_shift``;
+    - unblocked points take ``base_log_shadowing``.
+
+    For the shared-marginal experiment rewrite, this is the object both
+    Gaussian and iid baselines should see directly.
+    """
+
+    loss_shift = (math.log(10.0) / 10.0) * extra_loss_db
+    return DiscreteLogShadowingMarginal(
+        values_log=(base_log_shadowing - loss_shift, base_log_shadowing),
+        probabilities=(blocked_area_fraction, 1.0 - blocked_area_fraction),
+    )
+
+
+def _config_with_shared_log_shadowing_marginal(
+    config: ExperimentConfig,
+    *,
+    marginal: DiscreteLogShadowingMarginal,
+    corr_length: float | None = None,
+    base_seed: int | None = None,
+) -> ExperimentConfig:
+    """Return a copy of ``config`` where both models use the same marginal."""
+
+    gaussian_model = next(model for model in config.models if model.kind == "gaussian")
+
+    return ExperimentConfig(
+        ppp_intensity_lambda=config.ppp_intensity_lambda,
+        outage_target_epsilon=config.outage_target_epsilon,
+        candidate_rb_budgets=config.candidate_rb_budgets,
+        n_trials=config.n_trials,
+        base_seed=config.base_seed if base_seed is None else int(base_seed),
+        models=(
+            ModelSpec(
+                model_id="uniform_baseline",
+                kind="uniform",
+                uniform=UniformParams(marginal=marginal),
+            ),
+            ModelSpec(
+                model_id=gaussian_model.model_id,
+                kind="gaussian",
+                gaussian=GaussianParams(
+                    corr_length=(
+                        gaussian_model.gaussian.corr_length
+                        if corr_length is None
+                        else corr_length
+                    ),
+                    marginal=marginal,
+                ),
+            ),
+        ),
+    )
+
+
+def _config_for_binary_square_truth(
+    config: ExperimentConfig,
+    *,
+    scenario: ObstructionFieldSpec,
+    corr_length: float | None = None,
+    base_seed: int | None = None,
+) -> ExperimentConfig:
+    """Return a scenario-specific shared-marginal config for square truth."""
+
+    marginal = _truth_marginal_log_for_binary_obstruction(
+        extra_loss_db=scenario.extra_loss_db,
+        blocked_area_fraction=scenario.square_area_fraction,
+        base_log_shadowing=scenario.base_log_shadowing,
+    )
+    return _config_with_shared_log_shadowing_marginal(
+        config,
+        marginal=marginal,
+        corr_length=corr_length,
+        base_seed=base_seed,
+    )
+
+
+def _certificate_from_trial_outcomes(
+    *,
+    outcomes,
+    alpha: float = 0.05,
+    threshold: float = 0.5,
+) -> GaussianVsUniformCertificateResult:
+    """Build one certificate summary while preserving the supplied outcomes."""
+
+    summary = certify_gaussian_better_from_error_pairs(
+        error_pairs=tuple(
+            (
+                outcome.uniform_abs_demand_error,
+                outcome.gaussian_abs_demand_error,
+            )
+            for outcome in outcomes
+        ),
+        alpha=alpha,
+        threshold=threshold,
+        tie_policy="uniform_wins",
+    )
+    return GaussianVsUniformCertificateResult(
+        alpha=alpha,
+        threshold=threshold,
+        successes=summary.successes,
+        trials=summary.trials,
+        p_hat=summary.p_hat,
+        lcb=summary.lcb,
+        certified=summary.certified,
+        ties=summary.ties,
+        outcomes=tuple(outcomes),
+    )
 
 
 def _write_research_results(
@@ -255,16 +373,21 @@ def _run_certificate_experiment_and_write_results(
       varies scientifically from one experiment to the next.
     """
 
-    cert = run_gaussian_vs_uniform_certificate(
-        config=config,
-        beam=beam,
-        prb_params=prb_params,
-        scenarios=scenarios,
-        base_seeds=base_seeds,
-        alpha=0.05,
-        threshold=0.5,
-        prediction_draws_per_trial=prediction_draws_per_trial,
-    )
+    all_outcomes = []
+    for scenario in scenarios:
+        scenario_config = _config_for_binary_square_truth(config, scenario=scenario)
+        scenario_cert = run_gaussian_vs_uniform_certificate(
+            config=scenario_config,
+            beam=beam,
+            prb_params=prb_params,
+            scenarios=(scenario,),
+            base_seeds=base_seeds,
+            alpha=0.05,
+            threshold=0.5,
+            prediction_draws_per_trial=prediction_draws_per_trial,
+        )
+        all_outcomes.extend(scenario_cert.outcomes)
+    cert = _certificate_from_trial_outcomes(outcomes=all_outcomes)
 
     raw_table_lines: list[str] = [
         "[trial_level_certificate_rows]",
@@ -351,13 +474,10 @@ def _run_certificate_experiment_and_write_results(
     for scenario_label in scenario_labels_in_order:
         scenario = scenarios_by_label[scenario_label]
         for seed in base_seeds:
-            seed_config = ExperimentConfig(
-                ppp_intensity_lambda=config.ppp_intensity_lambda,
-                outage_target_epsilon=config.outage_target_epsilon,
-                candidate_rb_budgets=config.candidate_rb_budgets,
-                n_trials=config.n_trials,
+            seed_config = _config_for_binary_square_truth(
+                config,
+                scenario=scenario,
                 base_seed=int(seed),
-                models=config.models,
             )
             dimensioning_result = run_truth_anchored_attenuation_comparison(
                 config=seed_config,
@@ -436,25 +556,11 @@ def _fragmentation_experiment_setup() -> tuple[
       model's predicted mean total demand.
 
     Calibration policy used here:
-    - match the first two marginal moments of the shared comparison models to
-      the current 50%-blocked binary truth family;
-    - for the Gaussian model, those moments are supplied directly as
-      ``mean_log`` and ``variance_log`` because the Gaussian parameterization
-      exposes them explicitly;
-    - for the uniform model, mean is not supplied directly: the model is
-      parameterized by ``low_log`` and ``high_log`` instead, so those bounds
-      must be computed from the chosen mean and comparison variance;
-    - for ``U ~ Uniform[a, b]``, we have
-      ``E[U] = (a + b) / 2`` and ``Var(U) = (b - a)^2 / 12``;
-    - solving those equations for target mean ``m`` and target variance ``v``
-      gives half-width ``sqrt(3v)``, so
-      ``low_log = m - sqrt(3v)`` and ``high_log = m + sqrt(3v)``.
-
-    Why this is still a small step:
-    - after mean matching, variance was the next dominant one-point mismatch;
-    - both moments are analytic for the current binary truth family, so this
-      calibration still does not alter the rest of the experiment flow or
-      introduce scenario-specific fitting logic.
+    - both compared models see the exact same truth-side one-point marginal
+      for the 50%-blocked binary square family;
+    - the iid baseline draws independently from that marginal;
+    - the Gaussian model uses that same marginal but adds spatial correlation
+      through its RBF covariance model.
 
     The values here are intended as the first stable baseline for the
     fragmentation experiment. They are not yet claimed to be the final
@@ -462,23 +568,10 @@ def _fragmentation_experiment_setup() -> tuple[
     support scenario-by-scenario comparisons.
     """
 
-    # Next smallest calibration step:
-    # match the first two moments of the shared comparison models to the
-    # current 50%-blocked truth family so the comparison is not dominated by
-    # a large one-point bias or scale mismatch before we study anything more
-    # subtle about spatial structure.
-    comparison_mean_log = _truth_mean_log_for_binary_obstruction(
+    comparison_marginal = _truth_marginal_log_for_binary_obstruction(
         extra_loss_db=10.0,
         blocked_area_fraction=0.5,
     )
-    comparison_variance_log = _truth_variance_log_for_binary_obstruction(
-        extra_loss_db=10.0,
-        blocked_area_fraction=0.5,
-    )
-    # Uniform does have variance, but it is implied by its interval rather than
-    # supplied directly. For target variance v, the required half-width is
-    # sqrt(3v), because Var(Uniform[m-h, m+h]) = h^2 / 3 = v.
-    uniform_half_width = math.sqrt(3.0 * comparison_variance_log)
 
     config = ExperimentConfig(
         ppp_intensity_lambda=1.0,
@@ -490,18 +583,14 @@ def _fragmentation_experiment_setup() -> tuple[
             ModelSpec(
                 model_id="uniform_baseline",
                 kind="uniform",
-                uniform=UniformParams(
-                    low_log=comparison_mean_log - uniform_half_width,
-                    high_log=comparison_mean_log + uniform_half_width,
-                ),
+                uniform=UniformParams(marginal=comparison_marginal),
             ),
             ModelSpec(
                 model_id="gaussian_l1",
                 kind="gaussian",
                 gaussian=GaussianParams(
-                    mean_log=comparison_mean_log,
-                    variance_log=comparison_variance_log,
                     corr_length=2.0,
+                    marginal=comparison_marginal,
                 ),
             ),
         ),
@@ -560,12 +649,10 @@ def _blocked_area_experiment_setup() -> tuple[
     - same Gaussian/uniform shared-moment calibration,
     - same seed/trial structure.
 
-    Current limitation:
-    - the shared calibration imported from the fragmentation setup is exact
-      for the 50%-blocked family and only a reference calibration for the
-      smaller blocked-area cases;
-    - full scenario-by-scenario moment matching for the area sweep is the
-      next fairness step after this shared-variance update.
+    Current calibration policy:
+    - for each scenario in the sweep, rebuild the compared models from that
+      scenario's exact binary truth marginal before running the experiment;
+    - this keeps the area sweep fair even though the blocked fraction changes.
     """
 
     config, beam, prb_params, _scenarios, base_seeds = _fragmentation_experiment_setup()
@@ -628,6 +715,18 @@ def _config_with_gaussian_corr_length(
     uniform_model = next(model for model in config.models if model.kind == "uniform")
     gaussian_model = next(model for model in config.models if model.kind == "gaussian")
 
+    if gaussian_model.gaussian.marginal is not None:
+        gaussian_params = GaussianParams(
+            corr_length=corr_length,
+            marginal=gaussian_model.gaussian.marginal,
+        )
+    else:
+        gaussian_params = GaussianParams(
+            corr_length=corr_length,
+            mean_log=gaussian_model.gaussian.mean_log,
+            variance_log=gaussian_model.gaussian.variance_log,
+        )
+
     return ExperimentConfig(
         ppp_intensity_lambda=config.ppp_intensity_lambda,
         outage_target_epsilon=config.outage_target_epsilon,
@@ -639,11 +738,7 @@ def _config_with_gaussian_corr_length(
             ModelSpec(
                 model_id=gaussian_model.model_id,
                 kind=gaussian_model.kind,
-                gaussian=GaussianParams(
-                    mean_log=gaussian_model.gaussian.mean_log,
-                    variance_log=gaussian_model.gaussian.variance_log,
-                    corr_length=corr_length,
-                ),
+                gaussian=gaussian_params,
             ),
         ),
     )

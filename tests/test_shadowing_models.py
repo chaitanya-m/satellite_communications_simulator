@@ -17,9 +17,12 @@ import random
 import numpy as np
 import pytest
 
+from experiments.satellites.attenuation_contracts import DiscreteLogShadowingMarginal
 from sim.stochastic.shadowing import (
     build_gaussian_log_shadowing_covariance,
+    sample_correlated_log_shadowing_from_discrete_marginal,
     sample_gaussian_log_shadowing,
+    sample_log_shadowing_from_discrete_marginal,
     sample_uniform_log_shadowing,
 )
 
@@ -86,6 +89,37 @@ def test_uniform_log_shadowing_handles_zero_users() -> None:
         rng=random.Random(0),
     )
     assert draws.shape == (0,)
+
+
+def test_discrete_marginal_sampler_is_reproducible_and_uses_only_supplied_support() -> None:
+    """The iid shared-marginal sampler should preserve the provided support."""
+
+    marginal = DiscreteLogShadowingMarginal(
+        values_log=(-2.0, -0.5, 0.0),
+        probabilities=(0.2, 0.5, 0.3),
+    )
+    rng_a = random.Random(123)
+    rng_b = random.Random(123)
+
+    draws_a = sample_log_shadowing_from_discrete_marginal(
+        20_000,
+        marginal=marginal,
+        rng=rng_a,
+    )
+    draws_b = sample_log_shadowing_from_discrete_marginal(
+        20_000,
+        marginal=marginal,
+        rng=rng_b,
+    )
+
+    assert draws_a.shape == (20_000,)
+    assert np.allclose(draws_a, draws_b)
+    assert set(np.unique(draws_a)) == set(marginal.values_log)
+    observed_probs = np.array(
+        [np.mean(draws_a == value) for value in marginal.values_log],
+        dtype=float,
+    )
+    assert np.allclose(observed_probs, np.array(marginal.probabilities), atol=0.02)
 
 
 def test_uniform_log_shadowing_rejects_invalid_parameters() -> None:
@@ -216,6 +250,35 @@ def test_gaussian_sampler_handles_zero_users() -> None:
         rng=random.Random(0),
     )
     assert draws.shape == (0,)
+
+
+def test_correlated_shared_marginal_sampler_is_reproducible_and_uses_only_support() -> None:
+    """Shared-marginal Gaussian sampling should add dependence without changing support."""
+
+    marginal = DiscreteLogShadowingMarginal(
+        values_log=(-2.0, 0.0),
+        probabilities=(0.5, 0.5),
+    )
+    locations = np.array([[0.0, 0.0], [0.2, 0.0], [5.0, 0.0]], dtype=float)
+    rng_a = random.Random(999)
+    rng_b = random.Random(999)
+
+    draws_a = sample_correlated_log_shadowing_from_discrete_marginal(
+        locations,
+        marginal=marginal,
+        corr_length=1.5,
+        rng=rng_a,
+    )
+    draws_b = sample_correlated_log_shadowing_from_discrete_marginal(
+        locations,
+        marginal=marginal,
+        corr_length=1.5,
+        rng=rng_b,
+    )
+
+    assert draws_a.shape == (3,)
+    assert np.allclose(draws_a, draws_b)
+    assert set(np.unique(draws_a)).issubset(set(marginal.values_log))
 
 
 def test_gaussian_sampler_rejects_invalid_inputs() -> None:

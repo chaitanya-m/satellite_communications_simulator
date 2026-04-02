@@ -60,7 +60,9 @@ from sim.stochastic.obstruction_field import (
     evaluate_obstruction_log_shadowing,
 )
 from sim.stochastic.shadowing import (
+    sample_correlated_log_shadowing_from_discrete_marginal,
     sample_gaussian_log_shadowing,
+    sample_log_shadowing_from_discrete_marginal,
     sample_uniform_log_shadowing,
 )
 from sim.stochastic.user_locations import CircularBeam, sample_user_locations_ppp
@@ -354,21 +356,36 @@ def _sample_total_prb_demand_for_model(
     # Draw one model-consistent log-shadowing vector on the fixed user geometry.
     if model.kind == "uniform":
         assert model.uniform is not None  # guaranteed by contract
-        log_shadowing = sample_uniform_log_shadowing(
-            n_users,
-            low_log=model.uniform.low_log,
-            high_log=model.uniform.high_log,
-            rng=rng,
-        )
+        if model.uniform.marginal is not None:
+            log_shadowing = sample_log_shadowing_from_discrete_marginal(
+                n_users,
+                marginal=model.uniform.marginal,
+                rng=rng,
+            )
+        else:
+            log_shadowing = sample_uniform_log_shadowing(
+                n_users,
+                low_log=model.uniform.low_log,
+                high_log=model.uniform.high_log,
+                rng=rng,
+            )
     elif model.kind == "gaussian":
         assert model.gaussian is not None  # guaranteed by contract
-        log_shadowing = sample_gaussian_log_shadowing(
-            user_locations=user_locations,
-            mean_log=model.gaussian.mean_log,
-            variance_log=model.gaussian.variance_log,
-            corr_length=model.gaussian.corr_length,
-            rng=rng,
-        )
+        if model.gaussian.marginal is not None:
+            log_shadowing = sample_correlated_log_shadowing_from_discrete_marginal(
+                user_locations=user_locations,
+                marginal=model.gaussian.marginal,
+                corr_length=model.gaussian.corr_length,
+                rng=rng,
+            )
+        else:
+            log_shadowing = sample_gaussian_log_shadowing(
+                user_locations=user_locations,
+                mean_log=model.gaussian.mean_log,
+                variance_log=model.gaussian.variance_log,
+                corr_length=model.gaussian.corr_length,
+                rng=rng,
+            )
     else:
         raise ValueError(f"unsupported model kind: {model.kind}")
 

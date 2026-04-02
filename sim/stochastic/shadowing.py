@@ -18,9 +18,15 @@ Notation used across functions:
 from __future__ import annotations
 
 import random
+from statistics import NormalDist
 from typing import Sequence
 
 import numpy as np
+
+from experiments.satellites.attenuation_contracts import DiscreteLogShadowingMarginal
+
+
+_STANDARD_NORMAL = NormalDist()
 
 
 def _numpy_generator_from_rng(rng: random.Random) -> np.random.Generator:
@@ -79,6 +85,56 @@ def sample_uniform_log_shadowing(
 
     generator = _numpy_generator_from_rng(rng)
     return generator.uniform(low=low_log, high=high_log, size=n_users).astype(float)
+
+
+def _map_uniform_percentiles_to_discrete_marginal(
+    percentiles: np.ndarray,
+    *,
+    marginal: DiscreteLogShadowingMarginal,
+) -> np.ndarray:
+    """Map percentiles in ``[0,1]`` to draws from a discrete log-shadowing law."""
+
+    u = np.asarray(percentiles, dtype=float)
+    if u.ndim != 1:
+        raise ValueError("percentiles must be a 1D array")
+    if u.size == 0:
+        return np.empty(0, dtype=float)
+    if not np.all(np.isfinite(u)):
+        raise ValueError("percentiles must contain only finite values")
+    if np.any((u < 0.0) | (u > 1.0)):
+        raise ValueError("percentiles must lie in [0, 1]")
+
+    support = np.asarray(marginal.values_log, dtype=float)
+    cumulative = np.cumsum(np.asarray(marginal.probabilities, dtype=float))
+    indices = np.searchsorted(cumulative, u, side="left")
+    indices = np.clip(indices, 0, support.size - 1)
+    return support[indices]
+
+
+def sample_log_shadowing_from_discrete_marginal(
+    n_users: int,
+    *,
+    marginal: DiscreteLogShadowingMarginal,
+    rng: random.Random,
+) -> np.ndarray:
+    """Sample iid log-shadowing values from a supplied discrete marginal.
+
+    This is the fair iid baseline used in the new experiment design: the
+    one-point distribution is supplied externally, and the baseline differs
+    from the Gaussian model only by ignoring spatial dependence.
+    """
+
+    if n_users < 0:
+        raise ValueError("n_users must be non-negative")
+    if n_users == 0:
+        return np.empty(0, dtype=float)
+
+    generator = _numpy_generator_from_rng(rng)
+    percentiles = generator.random(n_users, dtype=float)
+    return _map_uniform_percentiles_to_discrete_marginal(
+        percentiles,
+        marginal=marginal,
+    )
 
 
 def build_gaussian_log_shadowing_covariance(
@@ -231,3 +287,52 @@ def sample_gaussian_log_shadowing(
     
     # Return as a plain float vector with shape (n_users,).
     return np.asarray(sample, dtype=float)
+
+
+def sample_correlated_log_shadowing_from_discrete_marginal(
+    user_locations: Sequence[Sequence[float]] | np.ndarray,
+    *,
+    marginal: DiscreteLogShadowingMarginal,
+    corr_length: float,
+    rng: random.Random,
+    jitter: float = 1e-9,
+) -> np.ndarray:
+    """Sample correlated log-shadowing values with a supplied shared marginal.
+
+    Procedure:
+    1. draw one correlated standard-Gaussian vector over the user locations;
+    2. convert those latent values into percentiles;
+    3. map those percentiles through the supplied discrete marginal.
+
+    Result:
+    - each user has the same supplied one-point marginal law;
+    - nearby users remain positively correlated through the Gaussian field.
+    """
+
+    x = np.asarray(user_locations, dtype=float)
+    if x.ndim != 2:
+        raise ValueError("user_locations must be a 2D array (n_users, n_dims)")
+    if x.shape[0] == 0:
+        return np.empty(0, dtype=float)
+
+    covariance = build_gaussian_log_shadowing_covariance(
+        x,
+        variance_log=1.0,
+        corr_length=corr_length,
+        jitter=jitter,
+    )
+    generator = _numpy_generator_from_rng(rng)
+    latent = generator.multivariate_normal(
+        mean=np.zeros(x.shape[0], dtype=float),
+        cov=covariance,
+        method="cholesky",
+    )
+    percentiles = np.fromiter(
+        (_STANDARD_NORMAL.cdf(float(value)) for value in latent),
+        dtype=float,
+        count=latent.shape[0],
+    )
+    return _map_uniform_percentiles_to_discrete_marginal(
+        percentiles,
+        marginal=marginal,
+    )

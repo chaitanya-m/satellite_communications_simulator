@@ -25,11 +25,11 @@ math: mathjax
 
 # What the Tool Does
 
-- Convert the supplied marginal SNR information into a spatial Gaussian field model.
+- Build one Gaussian field model from the supplied marginal SNR information.
 - Use an RBF covariance model over the sampled user positions.
 - In the current model, the main spatial parameter is the correlation length $\ell$.
-- Generate correlated user-level channel realizations quickly.
-- Compute the dimensioning value without rerunning a large scenario library.
+- Draw many correlated shadowing realizations from that same Gaussian model.
+- Convert those draws to demand and estimate outage in order to choose the budget.
 
 ---
 
@@ -38,7 +38,8 @@ math: mathjax
 - Offline studies are used to choose and justify the correlation length $\ell$.
 - Mean and variance come mainly from the supplied marginal SNR distribution.
 - With the current fixed RBF kernel, ``correlation structure'' means essentially the choice of $\ell$.
-- Online, the tool uses that validated $\ell$ to build the covariance matrix for the current user set.
+- Online, the tool does not generate many obstruction scenarios.
+- Online, it uses the validated $\ell$ to build one covariance matrix for the current user set, then samples that model repeatedly.
 
 ---
 

@@ -39,6 +39,44 @@ The benchmark question is:
 
 ---
 
+# No Free Lunch Theorems
+
+- Over the set of all possible scenario families, Gaussian and iid baselines should not be expected to separate systematically.
+- Gaussian should only have an advantage when spatial correlation matters for aggregate demand.
+- Even then, it should only help when the covariance model uses roughly the right correlation scale.
+
+---
+
+# No Free Lunch Theorems
+
+- To show a Gaussian advantage, the truth family must contain genuine spatial coherence.
+- But the truth generator should not itself be Gaussian, otherwise the comparison is circular.
+- So the right truth family is: correlated, non-Gaussian (at least not explicity constructed Gaussian), and sensitive to local proximity.
+
+---
+
+# No Free Lunch Theorems
+
+- Current fair procedure:
+  - both models use the same supplied marginal
+  - Uniform samples iid from that marginal
+  - Gaussian builds a covariance matrix from user distances
+  - Gaussian samples one correlated latent Gaussian vector
+  - that latent draw is converted into percentiles
+  - those percentiles are mapped into the supplied marginal
+- Result: closer points are more likely, but not guaranteed, to receive similar values.
+
+---
+
+
+
+# Current issue of interest
+
+- Considering No Free Lunch theorems above...Which scenarios should lead to Gaussian Field correlation matrix providing a significant advantage?
+- Or, which ones lead to a significant deterioration using the Uniform model?
+
+---
+
 # User Workflow
 
 - Input: required user bit rate $c$.

@@ -5,12 +5,37 @@ paginate: true
 math: mathjax
 ---
 
-# Gaussian-Field Dimensioning
+# Objective
 
-- User goal: get a dimensioning value quickly.
-- User does not want to run a large scenario library online.
-- Product input is compact: rate target, outage target, and a marginal SNR distribution.
-- Product output is a required RB budget or capacity recommendation.
+We are building a fast dimensioning surrogate for satellite systems.
+
+
+The user gives:
+
+- required user rate
+- outage target
+- a non-spatial marginal distribution of SNR or log-shadowing
+
+---
+
+# Objective
+
+The tool then:
+
+- uses that marginal as the one-point channel law
+- adds a Gaussian spatial correlation model over users
+- samples many correlated realizations
+- converts them to PRB demand
+- returns a required RB budget
+
+---
+
+# Objective
+
+The benchmark question is:
+
+- does this Gaussian spatial surrogate produce good dimensioning values,
+- better than an iid baseline using the same marginal?
 
 ---
 
@@ -53,7 +78,7 @@ math: mathjax
 
 ---
 
-# Mathematical Setup
+# Channel Setup
 
 For a circular beam $\mathcal{B}\subset\mathbb{R}^2$,
 $$

@@ -7,73 +7,58 @@ math: mathjax
 
 # Objective
 
-We are building a fast dimensioning surrogate for satellite systems.
+We are building a fast RB-dimensioning surrogate for satellite systems.
 
+The user provides:
 
-The user gives:
+- required user bit rate $c$
+- outage target $\varepsilon$
+- a one-point marginal channel law, preferably as a log-shadowing CDF $F_G$
 
-- required user rate
-- outage target
-- a non-spatial marginal distribution of SNR or log-shadowing
-
----
-
-# Objective
-
-The tool then:
-
-- uses that marginal as the one-point channel law
-- adds a Gaussian spatial correlation model over users
-- samples many correlated realizations
-- converts them to PRB demand
-- returns a required RB budget
+If the starting point is a marginal SNR law rather than a log-shadowing law, it is converted upstream into an equivalent marginal $F_G$ under the fixed baseline/pathloss convention.
 
 ---
 
-# Objective
+# Benchmark Question
 
-The benchmark question is:
+The core benchmark question is:
 
-- does this Gaussian spatial surrogate produce good dimensioning values,
-- better than an iid baseline using the same marginal?
-
----
-
-# No Free Lunch Theorems
-
-- Over the set of all possible scenario families, Gaussian and iid baselines should not be expected to separate systematically.
-- Gaussian should only have an advantage when spatial correlation matters for aggregate demand.
-- Even then, it should only help when the covariance model uses roughly the right correlation scale.
+- does a Gaussian spatial dependence surrogate produce better dimensioning values than an iid baseline
+- when both models use the same one-point marginal $F_G$
 
 ---
 
-# No Free Lunch Theorems
+# When Gaussian Should Win
 
-- To show a Gaussian advantage, the truth family must contain genuine spatial coherence.
-- But the truth generator should not itself be Gaussian, otherwise the comparison is circular.
-- So the right truth family is: correlated, non-Gaussian (at least not explicity constructed Gaussian), and sensitive to local proximity.
-
----
-
-# No Free Lunch Theorems
-
-- Current fair procedure:
-  - both models use the same supplied marginal
-  - Uniform samples iid from that marginal
-  - Gaussian builds a covariance matrix from user distances
-  - Gaussian samples one correlated latent Gaussian vector
-  - that latent draw is converted into percentiles
-  - those percentiles are mapped into the supplied marginal
-- Result: closer points are more likely, but not guaranteed, to receive similar values.
+- Gaussian should only help when spatial dependence matters for aggregate demand.
+- The truth family must contain genuine spatial coherence across nearby users.
+- The iid baseline must use the same marginal $F_G$, so the only difference is dependence.
+- The truth generator should not itself be Gaussianized; otherwise the comparison becomes circular.
 
 ---
 
+# Fair Comparison
 
+- The iid baseline draws user shadowing iid from the supplied marginal $F_G$.
+- The Gaussian surrogate keeps the same marginal $F_G$ at each user.
+- The Gaussian surrogate adds only a dependence structure through a latent covariance model.
+- Result: nearby users tend to receive more similar shadowing values, but the one-point law is unchanged.
 
-# Current issue of interest
+---
 
-- Considering No Free Lunch theorems above...Which scenarios should lead to Gaussian Field correlation matrix providing a significant advantage?
-- Or, which ones lead to a significant deterioration using the Uniform model?
+# Current Research Focus
+
+- Which scenario families give the Gaussian dependence model a clear advantage?
+- Which scenario families make the iid baseline fail most clearly?
+
+---
+
+# Scope
+
+- This question is methodological, not physical.
+- Physics / telecom realism is not the point at this stage.
+- The immediate goal is to identify which spatial-structure families favor the Gaussian dependence model.
+- Standards-based realism can be layered in later, once that structural question is understood.
 
 ---
 
@@ -81,38 +66,29 @@ The benchmark question is:
 
 - Input: required user bit rate $c$.
 - Input: outage target $\varepsilon$.
-- Input: marginal SNR distribution $F_{\Gamma}$.
-- $Optional\ Input: beam / load \  assumptions.$
-- Equivalently, the same input can be expressed as a marginal log-shadowing distribution, which is the form used internally.
+- Input: one-point log-shadowing CDF $F_G$.
+- Optional input: fixed beam / geometry assumptions used by the channel map.
+- The user does not provide a spatial obstruction map, a covariance matrix, or a per-geometry simulation campaign.
 
 ---
 
-# What the Tool Does
+# Online Model
 
-- Build one Gaussian field model from the supplied marginal SNR information.
-- Use an RBF covariance model over the sampled user positions.
-- In the current model, the main spatial parameter is the correlation length $\ell$.
-- Draw many correlated shadowing realizations from that same Gaussian model.
+- Sample user locations in the beam.
+- Build an RBF covariance matrix on those user locations.
+- Draw a latent Gaussian vector with correlation length $\ell$.
+- Map that latent draw through the standard normal CDF and the quantile $F_G^{-1}$.
 - Convert those draws to demand and estimate outage in order to choose the budget.
 
 ---
 
-# What Is Fixed Offline
+# Offline Calibration
 
 - Offline studies are used to choose and justify the correlation length $\ell$.
-- Mean and variance come mainly from the supplied marginal SNR distribution.
+- The supplied marginal $F_G$ fixes the one-point channel law.
 - With the current fixed RBF kernel, ``correlation structure'' means essentially the choice of $\ell$.
 - Online, the tool does not generate many obstruction scenarios.
 - Online, it uses the validated $\ell$ to build one covariance matrix for the current user set, then samples that model repeatedly.
-
----
-
-# What the User Does Not Provide
-
-- no spatial obstruction map
-- no covariance matrix
-- no scenario family or descriptor model
-- no per-geometry simulation campaign
 
 ---
 
@@ -127,39 +103,42 @@ X=\{x_i\}_{i=1}^{N},
 x_i \stackrel{\mathrm{iid}}{\sim} \mathrm{Unif}(\mathcal{B}).
 $$
 
-If $\Gamma(x)$ denotes user SNR, the user supplies its marginal law
+Let $G_0$ denote one-point log-shadowing at a generic user location. The user-supplied marginal law is
 $$
-\Gamma(x) \sim F_{\Gamma}.
+G_0 \sim F_G.
 $$
 
-Equivalent shadowing representation:
+The channel map under any shadowing field $G(\cdot)$ is
 $$
-G(x)=\log \Gamma(x)-\log SNR_0+\gamma\log\!\Bigl(\frac{d(x)}{h}\Bigr).
+\mathrm{SNR}(x;G)=SNR_0\Bigl(\frac{d(x)}{h}\Bigr)^{-\gamma} e^{G(x)}.
 $$
 
 ---
 
-# Gaussian Engine
+# Gaussian Dependence Engine
 
-The tool builds a Gaussian field over the sampled users:
+Latent Gaussian copula construction:
 $$
-G_G(X)\sim \mathcal{N}\!\bigl(\mu \mathbf{1},\,K_\theta(X)\bigr).
+Z(X)\sim \mathcal{N}\!\bigl(0,\,K_\ell(X)\bigr).
 $$
 
 With an RBF covariance family,
 $$
-\bigl[K_\theta(X)\bigr]_{ij}
+\bigl[K_\ell(X)\bigr]_{ij}
 =
-\sigma^2
 \exp\!\left(
 -\frac{\|x_i-x_j\|^2}{2\ell^2}
 \right).
 $$
 
-Here:
+Shared-marginal sampling:
 $$
-\theta=(\mu,\sigma^2,\ell).
+U_i=\Phi(Z_i),
+\qquad
+G_G(x_i)=F_G^{-1}(U_i).
 $$
+
+So each $G_G(x_i)$ has marginal law $F_G$, while dependence across users is induced by $K_\ell(X)$.
 
 ---
 
@@ -167,6 +146,9 @@ $$
 
 $$
 \mathcal{B} : \text{beam footprint},
+\qquad
+\quad
+x : \text{generic location in the beam},
 \qquad
 \lambda : \text{PPP user intensity},
 \qquad
@@ -176,46 +158,48 @@ X=\{x_i\}_{i=1}^{N} : \text{user locations}.
 $$
 
 $$
-F_{\Gamma} : \text{marginal SNR distribution supplied by the user},
+G_0 : \text{generic one-point log-shadowing random variable},
 \qquad
-G_G(X) : \text{Gaussian field over the sampled users}.
+F_G : \text{CDF of the user-supplied one-point log-shadowing law},
+\qquad
+F_G^{-1} : \text{quantile function of } F_G.
 $$
 
 $$
-K_\theta(X) : \text{covariance matrix on the user set},
+Z(X) : \text{latent Gaussian vector over the sampled users},
 \qquad
-\theta=(\mu,\sigma^2,\ell) : \text{Gaussian parameters}.
+K_\ell(X) : \text{RBF covariance matrix on the user set},
+\qquad
+G_G(X) : \text{shared-marginal correlated shadowing values}.
 $$
 
 $$
-\mu : \text{field mean},
+\ell : \text{correlation length},
 \qquad
-\sigma^2 : \text{field variance},
+\Phi : \text{standard normal CDF},
 \qquad
-\ell : \text{correlation length}.
+U_i : \text{latent Gaussian percentile at user } i.
 $$
 
 ---
 
-# Channel and Demand
+# Channel to Demand Map
 
 $$
 d(x)=\sqrt{h^2+r(x)^2},
 \qquad
-\mathrm{SNR}(x)=SNR_0\Bigl(\frac{d(x)}{h}\Bigr)^{-\gamma} e^{G_G(x)}.
+\eta(x;G)=\max\!\bigl(\eta_{\min},\log_2(1+\mathrm{SNR}(x;G))\bigr).
 $$
 
 $$
-\eta(x)=\max\!\bigl(\eta_{\min},\log_2(1+\mathrm{SNR}(x))\bigr).
-$$
-
-$$
-N_{\mathrm{RB}}(x)=
+N_{\mathrm{RB}}(x;G)=
 \left\lceil
-\frac{c}{W_{\mathrm{RB}}\eta(x)}
-\right\rceil,
-\qquad
-D(X,G_G)=\sum_{i=1}^{N} N_{\mathrm{RB}}(x_i).
+\frac{c}{W_{\mathrm{RB}}\eta(x;G)}
+\right\rceil.
+$$
+
+$$
+D(X,G)=\sum_{i=1}^{N} N_{\mathrm{RB}}(x_i;G).
 $$
 
 ---
@@ -235,11 +219,13 @@ SNR_0 : \text{reference SNR},
 \qquad
 \gamma : \text{pathloss exponent},
 \qquad
-G_G(x) : \text{Gaussian-field log-shadowing}.
+G(\cdot) : \text{generic shadowing field over the beam}.
 $$
 
 $$
-\eta(x) : \text{effective spectral efficiency},
+\mathrm{SNR}(x;G) : \text{SNR at location } x \text{ under field } G,
+\qquad
+\eta(x;G) : \text{effective spectral efficiency under field } G,
 \qquad
 \eta_{\min} : \text{spectral-efficiency floor}.
 $$
@@ -249,11 +235,11 @@ c : \text{required user bit rate},
 \qquad
 W_{\mathrm{RB}} : \text{bandwidth per RB},
 \qquad
-N_{\mathrm{RB}}(x) : \text{user PRB demand}.
+N_{\mathrm{RB}}(x;G) : \text{user RB demand under field } G.
 $$
 
 $$
-D(X,G_G) : \text{total beam PRB demand under the Gaussian model}.
+D(X,G) : \text{total beam RB demand under field } G.
 $$
 
 ---
@@ -271,17 +257,18 @@ b \in \mathcal{G}_{\mathrm{RB}} :
 $$
 
 Product output:
+
 - required RB budget
 - optional derived capacity / satellite recommendation
 
 ---
 
-# Why Gaussian Instead of iid Uniform
+# Why Gaussian Instead of iid Baseline
 
-- iid Uniform matches only a marginal law.
+- The iid baseline draws $G_{\mathrm{iid}}(x_i)\stackrel{\mathrm{iid}}{\sim}F_G$.
+- It matches the same one-point marginal law as the Gaussian surrogate.
 - It ignores spatial dependence across nearby users.
-- A Gaussian field couples nearby users through covariance.
-- That covariance should improve aggregate demand and outage prediction.
+- The Gaussian surrogate adds dependence only through the latent covariance matrix.
 
 ---
 
@@ -296,7 +283,7 @@ Product output:
 
 # Research Benchmark
 
-To evaluate the Gaussian method, compare it against a benchmark truth:
+To evaluate the Gaussian method, compare it against a benchmark truth field $G^\star(\cdot)$:
 $$
 B^\star
 =
@@ -317,7 +304,7 @@ $$
 
 If the benchmark truth is already Gaussian, the test is weak:
 $$
-G^\star \sim \mathcal{GP}(\mu^\star,K^\star)
+G^\star \text{ is itself Gaussian}
 \;\Longrightarrow\;
 \text{Gaussian is advantaged by construction.}
 $$
@@ -331,33 +318,23 @@ So the evaluation truth should remain non-Gaussian when testing a Gaussian-field
 # Symbols
 
 $$
-\mathcal{B} : \text{beam footprint},
-\quad
-\lambda : \text{PPP user intensity},
-\quad
-X=\{x_i\}_{i=1}^{N} : \text{user locations},
-\quad
-N : \text{user count}.
+G_{\mathrm{iid}} : \text{iid baseline shadowing field with marginal } F_G,
+\qquad
+G_G : \text{Gaussian surrogate shadowing field},
+\qquad
+G^\star : \text{benchmark truth shadowing field}.
 $$
 
 $$
-F_{\Gamma} : \text{marginal SNR distribution},
-\quad
-G_G : \text{Gaussian shadowing field},
-\quad
-\theta=(\mu,\sigma^2,\ell) : \text{Gaussian parameters}.
-$$
-
-$$
-c : \text{required user bit rate},
-\quad
 \varepsilon : \text{outage target},
-\quad
-\mathcal{G}_{\mathrm{RB}} : \text{candidate RB budget grid}.
+\qquad
+\mathcal{G}_{\mathrm{RB}} : \text{candidate RB budget grid},
+\qquad
+b : \text{candidate RB budget}.
 $$
 
 $$
 B_G : \text{Gaussian-model budget},
-\quad
+\qquad
 B^\star : \text{benchmark truth budget}.
 $$

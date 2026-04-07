@@ -199,7 +199,7 @@ $$
 
 - $X$: finite input/search domain.
 - $Y$: finite output/value set.
-- $f\in Y^X$: one optimization problem (objective mapping) from $X$ to $Y$.
+- $Y^X:=\{f:X\to Y\}$: set of all objective mappings from $X$ to $Y$; one problem is one $f\in Y^X$.
 - $A,B$: two optimization algorithms.
 - $m$: evaluation budget (number of function queries/steps).
 - $\mathrm{Perf}(A,f,m)$: performance of algorithm $A$ on problem $f$ after budget $m$.
@@ -372,6 +372,7 @@ $$
 \widehat{B}_M=\min\Bigl\{b\in\mathcal{G}_{\mathrm{RB}}:\widehat{\mathbb{P}}_n\bigl(D(X,G_M)>b\bigr)\le\varepsilon\Bigr\}.
 $$
 
+- Terminology reminder: $s$ indexes the truth scenario geometry; $\mathcal{G}_{\mathrm{RB}}$ is the discrete candidate beam-budget grid; $b$ is one tested budget value from that grid.
 - Trial-level superiority and budget-level superiority are related, but they are not the same object.
 - A model can improve demand prediction without immediately changing the selected budget on a coarse grid.
 
@@ -389,11 +390,15 @@ $$
 - Current Gaussian kernel family: RBF
 - Current Gaussian spatial parameter: correlation length $\ell$
 
-Methodological point:
+---
 
-- the geometry family is simple on purpose
-- the present goal is clean identification, not maximum realism
+# Methodological Points
 
+- The geometry family is simple on purpose
+- The present goal is clean identification, not maximum realism; mixing up the level of modeling required would be counterproductive
+- Monte Carlo is not magic! Search space must be carefully defined
+- Pulling values used in literature for ITU-R / 3GPP specs to fix a specific instantiation of $F_G$ is not the most pressing issue - at best this will fix a single shadowing scenario. 
+- Claiming that that is a general result would be incorrect.
 ---
 
 # What This Methodology Gives Us
@@ -416,10 +421,30 @@ $$
 - The aim is to characterize when a dependence-aware surrogate improves the decision we care about.
 - The current deck is therefore about **experimental design and mathematical comparability**, not yet about final empirical claims.
 
-That is why the right first deliverable is a coherent benchmark methodology.
+This is a an attempt to create a coherent benchmark methodology.
 
 ---
 
+# Channel Model Used
+
+For any shadowing field $G$ and user location $x$:
+$$
+d(x)=\sqrt{h^2+r(x)^2},
+\qquad
+\mathrm{SNR}(x;G)=SNR_0\Bigl(\frac{d(x)}{h}\Bigr)^{-\gamma}e^{G(x)}.
+$$
+
+$$
+\eta(x;G)=\max\!\bigl(\eta_{\min},\log_2(1+\mathrm{SNR}(x;G))\bigr).
+$$
+
+- $d(x)$: slant range from satellite to user.
+- $\gamma$: pathloss exponent.
+- $G(x)$: log-shadowing term (enters multiplicatively in linear SNR through $e^{G(x)}$).
+- $\eta(x;G)$ then feeds RB demand via
+  $N_{\mathrm{RB}}(x;G)=\left\lceil \frac{c}{W_{\mathrm{RB}}\eta(x;G)}\right\rceil$.
+
+---
 <style scoped>
 section {
   font-size: 1.5em;
@@ -471,7 +496,7 @@ section {
 
 <style scoped>
 section {
-  font-size: 1.2em;
+  font-size: 1.1em;
 }
 </style>
 # Symbols III

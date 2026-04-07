@@ -112,7 +112,7 @@ $$
 
 # Formalising Objective: Demand Map
 
-For fixed user geometry $X$, the demand map is
+Conditional on a realized user geometry $X$, the demand map is
 $$
 G \mapsto D(X,G).
 $$
@@ -132,17 +132,18 @@ $$
 # Formalising Objective: Model Specification
 
 - $F_G$: fixed shared one-point marginal law (the same for all compared models).
-- $\mathcal{M}$: set of model specifications for the spatial field law given $F_G$ (dependence structure + fixed parameters).
-  - examples: $U$ (iid baseline), $(G,\theta)$ (Gaussian surrogate with parameter vector $\theta$), and $\star$ (benchmark truth)
-- $G_M$: field induced by model specification $M\in\mathcal{M}$.
+- $\Theta_0$: set of Gaussian parameter values considered in the comparison.
+- $\mathcal{M}_{\mathrm{cmp}}:=\{U\}\cup\{(G,\theta):\theta\in\Theta_0\}$: set of compared model specifications.
+- $G_M$: field induced by compared model specification $M\in\mathcal{M}_{\mathrm{cmp}}$.
+- $G^\star$: benchmark truth field, kept separate from $\mathcal{M}_{\mathrm{cmp}}$.
 
 ---
 
 # Formalising Objective: Budget Output
 
-For any candidate model specification $M\in\mathcal{M}$, the budget dimensioning output is
+For any compared model specification $M\in\mathcal{M}_{\mathrm{cmp}}$, the budget dimensioning output is
 $$
-B_M=\min\Bigl\{b\in\mathcal{G}_{\mathrm{RB}}:\widehat{\mathbb{P}}_n\bigl(D(X,G_M)>b\bigr)\le\varepsilon\Bigr\}.
+\widehat{B}_M=\min\Bigl\{b\in\mathcal{G}_{\mathrm{RB}}:\widehat{\mathbb{P}}_n\bigl(D(X,G_M)>b\bigr)\le\varepsilon\Bigr\}.
 $$
 
 - Here $\mathcal{G}_{\mathrm{RB}}\subset\mathbb{N}$ is the tested grid of candidate beam RB budgets.
@@ -154,12 +155,12 @@ $$
 
 # Formalising Objective: Decision Comparison
 
-- Truth-side empirical evaluation uses $\widehat{\mathbb{P}}^\star_n\!\left(D(X,G^\star)>B_M\right)$.
+- Truth-side empirical evaluation uses $\widehat{\mathbb{P}}^\star_n\!\left(D(X,G^\star)>\widehat{B}_M\right)$.
 - Benchmark truth budget:
 $$
-B^\star=\min\{b\in\mathcal{G}_{\mathrm{RB}}:\widehat{\mathbb{P}}^\star_n(D(X,G^\star)>b)\le\varepsilon\}.
+\widehat{B}^\star=\min\{b\in\mathcal{G}_{\mathrm{RB}}:\widehat{\mathbb{P}}^\star_n(D(X,G^\star)>b)\le\varepsilon\}.
 $$
-- Comparison criterion: $|B_G-B^\star|<|B_U-B^\star|$.
+- Comparison criterion: $|\widehat{B}_{(G,\theta)}-\widehat{B}^\star|<|\widehat{B}_U-\widehat{B}^\star|$ for $\theta\in\Theta_0$.
 - The target of interest is **the budget decision**. Pointwise recovery of $G(x)$ is secondary.
 
 
@@ -169,21 +170,29 @@ $$
 
 Define the model-side budget error against truth:
 $$
-\Delta_M:=|B_M-B^\star|,\qquad M\in\{U,G\}.
+\Delta_M:=|\widehat{B}_M-\widehat{B}^\star|,\quad M\in\mathcal{M}_{\mathrm{cmp}}.
 $$
 
 $$
-\text{With }X,\ D(X,\cdot),\ F_G,\ \varepsilon,\ \mathcal{G}_{\mathrm{RB}}\ \text{fixed, identify truth-field classes }\mathcal{C}
-\text{ such that }\Delta_G<\Delta_U\ \text{for }G^\star\in\mathcal{C}.
+\text{With geometry law }\mathcal{L}_X\ (\text{e.g. }X\sim\mathrm{PPP}(\lambda)\text{ on }\mathcal{B}),\ D(X,\cdot),\ F_G,\ \varepsilon,\ \mathcal{G}_{\mathrm{RB}}\ \text{fixed,}
+$$
+$$
+\text{identify truth-field classes }\mathcal{C}\text{ and Gaussian parameter regimes }\Theta_0
+$$
+$$
+\text{ such that }\Delta_{(G,\theta)}<\Delta_U\ \text{for }G^\star\in\mathcal{C},\ \theta\in\Theta_0.
 $$
 
+- Here "fixed geometry" means the distribution $\mathcal{L}_X$ is fixed, not one single realized $X$.
+- PPP example in this line: $X\sim\mathrm{PPP}(\lambda)$ on $\mathcal{B}$ means a homogeneous Poisson user process with constant intensity $\lambda$ over the footprint.
 - In words: among structured non-Gaussian truth fields, when does replacing iid dependence with Gaussian dependence produce a beam budget closer to truth?
 
 ---
 
 # Fair Comparison Principle
 
-- The user geometry $X$ is the same for all compared models.
+- Within each trial, the realized user geometry $X$ is the same for all compared models.
+- Across trials, $X$ is resampled from the same fixed geometry law $\mathcal{L}_X$.
 - The one-point marginal law $F_G$ is the same for all compared models.
 - The pathloss convention and the demand map $G \mapsto D(X,G)$ are the same.
 - The outage target $\varepsilon$ and budget grid $\mathcal{G}_{\mathrm{RB}}$ are the same.
@@ -232,7 +241,7 @@ $$
 
 The benchmark truth budget is
 $$
-B^\star=\min\Bigl\{b\in\mathcal{G}_{\mathrm{RB}}:\mathbb{P}\bigl(D(X,G^\star)>b\bigr)\le\varepsilon\Bigr\}.
+\widehat{B}^\star=\min\Bigl\{b\in\mathcal{G}_{\mathrm{RB}}:\widehat{\mathbb{P}}^\star_n\bigl(D(X,G^\star)>b\bigr)\le\varepsilon\Bigr\}.
 $$
 
 - If $G^\star$ is already Gaussian by construction, the test is weak.
@@ -315,7 +324,7 @@ $$
 
 **Budget-level decision output**
 $$
-B_M=\min\Bigl\{b\in\mathcal{G}_{\mathrm{RB}}:\mathbb{P}\bigl(D(X,G_M)>b\bigr)\le\varepsilon\Bigr\}.
+\widehat{B}_M=\min\Bigl\{b\in\mathcal{G}_{\mathrm{RB}}:\widehat{\mathbb{P}}_n\bigl(D(X,G_M)>b\bigr)\le\varepsilon\Bigr\}.
 $$
 
 - Trial-level superiority and budget-level superiority are related, but they are not the same object.
@@ -351,7 +360,7 @@ Methodological point:
 
 This is the actual mathematical question:
 $$
-\text{for which truth families is } B_G \text{ closer to } B^\star \text{ than } B_U?
+\text{for which truth families is } \widehat{B}_G \text{ closer to } \widehat{B}^\star \text{ than } \widehat{B}_U?
 $$
 
 ---
@@ -424,8 +433,9 @@ section {
 
 ### Models and Outputs
 
-- $\mathcal{M}$: set of compared model specifications.
-- $M\in\mathcal{M}$: one model specification (family + fixed parameters), e.g. $U$, $(G,\theta)$, or $\star$.
+- $\Theta_0$: set of Gaussian parameter values considered in the comparison.
+- $\mathcal{M}_{\mathrm{cmp}}:=\{U\}\cup\{(G,\theta):\theta\in\Theta_0\}$: set of compared model specifications.
+- $M\in\mathcal{M}_{\mathrm{cmp}}$: one compared model specification, e.g. $U$ or $(G,\theta)$.
 - $G_M$: shadowing field produced by model $M$.
 - $G_U$: iid baseline shadowing field.
 - $G_G$: correlated Gaussian surrogate shadowing field.
@@ -443,5 +453,5 @@ section {
 - $\varepsilon$: target overload or outage probability.
 - $\mathcal{G}_{\mathrm{RB}}$: tested grid of beam RB budgets.
 - $b$: one candidate beam RB budget from that grid.
-- $B_U,B_G,B^\star$: budgets selected under the iid, Gaussian, and truth models.
-- $B_M$: budget selected by model $M$.
+- $\widehat{B}_U,\widehat{B}_G,\widehat{B}^\star$: empirical budgets selected under the iid, Gaussian, and truth models.
+- $\widehat{B}_M$: empirical budget selected by model $M$.

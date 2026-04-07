@@ -9,6 +9,7 @@ style: |
     background: #faf8f2;
     color: #1f2a2e;
     padding: 48px 56px;
+    font-size: 2.2em;
   }
   h1, h2, h3 {
     color: #173f37;
@@ -19,688 +20,428 @@ style: |
   table {
     font-size: 22px;
   }
-  img.diagram {
-    display: block;
-    margin: 18px auto 0 auto;
+  .small {
+    font-size: 0.68em;
+    line-height: 1.18;
   }
 ---
 
-# Motivation
+# Dimensioning Problem
 
-- We are dimensioning the long-term number of satellites needed
-  - Not making a next-instant scheduling decision
-- That requires a beam-level model for Resource Block (RB) demand under spatially structured attenuation
-- No such model exists in the literature. Operators compensate with over capacity. 
-  - Not feasible long term as userbase explodes (planes etc).
+- A resource block (RB) is a small time-frequency slice of spectrum allocated to a user by a scheduler for wireless communication.
 
-- Is a Gaussian spatial model accurate enough for the beam-level demand estimation problem?
+- Dimensioning is a long-horizon planning task of choosing how many satellite resources to deploy
 
-<!--
-Opening motivation slide added before the title so the audience sees the
-practical problem first.
+  - Choose the smallest RB-budget per beam that keeps outage probability below a target.
 
-Use this slide to establish:
-- there is a real long-horizon dimensioning decision;
-- that decision depends on the beam-level attenuation model;
-- the study exists to test whether a Gaussian approximation is good enough for that planning problem.
--->
+![bg right:45% contain](slide_assets/beam_users_rb.svg)
 
 ---
 
-# Governing Principles
+# Objective
 
-- A model should be judged against the question it is built to answer
-- This study lives at the **beam-level RB-dimensioning** layer
-- Wrong-layer detail is **confounding detail**, not rigor.
+- We test whether modeling spatial dependence, rather than only the marginal law, materially improves satellite RB-dimensioning decisions.
 
-<!--
-Use this slide as the governing rule for the whole talk.
-
-Whenever someone asks for extra realism, bring them back here:
-- what is the question?
-- what abstraction level answers it?
-- does the proposed detail sharpen inference or confound it?
--->
+- We will define this formally in the coming slides
 
 ---
 
-# Testing Shadowing Models
-## for Satellite RB Dimensioning
+# Modeling Layer
 
-- Spatial attenuation model -> SNR -> PRBs per user -> total beam RB budget
-- Goal: decide whether a **Gaussian field** is a better RB-dimensioning model than an **iid uniform baseline**
-- Method: compare both models against explicit obstruction scenarios
+- The operational decision is a **beam-level RB budget**
+  - not a next-instant scheduler action.
+- The object that matters is **aggregate demand across many users under one spatial attenuation pattern**.
+- So the study keeps only the mechanisms that change that object:
+  - user geometry
+  - spatial attenuation
+  - attenuation $\rightarrow$ SNR $\rightarrow$ RB demand
+- Fine details are largely not relevant
 
-![bg right:43% contain](slide_assets/beam_pipeline.svg)
-
-<!--
-Original slide material preserved from outline slides 1 and related notes.
-Main message:
-This work asks whether a Gaussian spatial model is good enough for RB dimensioning under spatially structured attenuation.
-
-Longer points:
-- A shadowing model tells us how attenuation is distributed across users in the beam.
-- That attenuation is turned into user SNR, then into PRBs needed per user, then into a total RB budget for the beam.
-- Context: satellite systems must choose enough resource blocks to meet demand without wasting capacity.
-
-Speaker notes:
-The audience needs the full chain immediately:
-- the model describes spatial attenuation across users;
-- attenuation determines SNR;
-- SNR determines PRBs per user;
-- summing across users gives the RB budget recommendation.
-That makes the role of the model concrete on slide 1.
--->
+![bg right:34% contain](slide_assets/beam_pipeline.svg)
 
 ---
 
-# What Is the Channel Model Here?
+# Formalising Objective: Fields
 
-- This is a **beam-level** model for one decision: RB dimensioning
-- It keeps only what changes that decision: user positions, spatial attenuation, and demand mapping
-- Lower-layer physical-layer (PHY) radio detail is deliberately out of scope for this study
 
-<!--
-Source: outline slide 2.
-Original content preserved:
-In a full telecom stack, one link may include many effects:
-- geometry and link budget;
-- pathloss;
-- shadowing / attenuation;
-- small-scale fading;
-- coding, modulation, scheduler details, and many other implementation effects.
-
-This study deliberately keeps only the pieces needed for the question we are asking:
-- users are placed spatially in the beam;
-- users experience location-dependent attenuation;
-- attenuation changes SNR;
-- SNR determines PRBs needed;
-- total beam demand is aggregated across users.
-
-What we keep:
-- the spatial layout of users;
-- the spatial layout of attenuation;
-- the mapping from attenuation to demand.
-
-What we deliberately leave out:
-- extra realism that does not help answer the present question more clearly.
-- any individual-user-equipment fading model that operates at a different level of abstraction from the beam-level dimensioning problem.
-
-Speaker notes:
-A model should be designed for the question it is built to answer; we need to find the right abstraction and drop unnecessary detail.
-
-We are not claiming this is the most realistic end-to-end channel model. We are claiming it is the right abstraction for isolating the effect of spatial attenuation structure on beam-wide RB dimensioning.
-For the realism-focused audience member, say explicitly:
-- yes, more realism is possible;
-- no, that is not automatically better for this study;
-- adding realism that changes many mechanisms at once makes it harder to tell whether the Gaussian spatial assumption is helping or hurting.
-- hyper-perfectionist realism is a risk here because it can muddy the causal question instead of sharpening it.
-- this project is not going down to individual-user-equipment fading models; that is outside the scope of the work and outside the decision level being studied.
--->
+- $F_G$: one-point probability distribution of log-shadowing for a single user.
+  - i.e. distribution of one log-shadowing value $G(x)$ at one location $x$
+- $G_U$: iid baseline field, with independent user values and marginal law $F_G$.
+  - The random field $G_U$ is a random function $x\mapsto G_U(x)$ (equivalently, a collection $\{G_U(x)\}_{x\in\mathcal{B}}$, where $\mathcal{B}$ is the beam footprint)
+- $G_G$: Gaussian field, with correlated user values and the same marginal law $F_G$.
+  - $G_G : x\mapsto G_G(x)$ (equivalently, a collection $\{G_G(x)\}_{x\in\mathcal{B}}$)
+- $G^\star$: benchmark truth field with structured spatial geometry (may be non-Gaussian).
+  - $G^\star : x\mapsto G^\star(x)$ (equivalently, a collection $\{G^\star(x)\}_{x\in\mathcal{B}}$)
 
 ---
 
-# Full Reality vs This Study
+# Formalising Objective: Gaussian Field
 
-| Full telecom reality | Our Channel Model |
-|---|---|
-| Many interacting mechanisms at once | Only the mechanisms needed for the study question |
-| Link-level and implementation-level detail | Beam-level demand abstraction |
-| Geometry, pathloss, shadowing, fading, coding, scheduler, implementation effects | User positions, spatial attenuation, attenuation -> SNR -> PRBs -> total demand |
-| Harder to isolate one cause | Built to isolate the effect of spatial attenuation structure |
-| Useful for end-to-end realism | Useful for testing the Gaussian spatial assumption cleanly |
+For realized users $X=\{x_i\}_{i=1}^{N}$:
 
-<!--
-This slide helps the audience orient to the abstraction gap before the stronger
-scope-boundary slide that follows.
--->
+- $G^\star$: benchmark truth field (reference for evaluation).
+- $G_G$: Gaussian-candidate field (the model we test against truth).
+- $Z$: latent Gaussian helper used only to construct $G_G$.
 
----
-
-# Disciplined Scope: What We Should Refuse To Mix
-
-- Beam-level RB dimensioning belongs in this study
-- Single-link fading, scheduler detail, and physical-layer radio realism do **not**
-- We should not add unnecessary detail 
-  - just to satisfy a reviewer
-
-<!--
-Table replacement for the earlier bubble diagram.
-Use this slide to say:
-- the two columns are not competing on "which is more realistic?";
-- they answer different questions;
-- this study is purpose-built for the beam-level spatial-dimensioning question.
--->
+Construction of $G_G$:
+$$
+Z(X):=\bigl(Z(x_1),\dots,Z(x_N)\bigr)^\top\sim\mathcal{N}\!\bigl(0,K_\ell(X)\bigr),\qquad
+\bigl[K_\ell(X)\bigr]_{ij}=\exp\!\left(-\frac{\|x_i-x_j\|^2}{2\ell^2}\right).
+$$
+- $\Phi$: standard normal CDF.
+- $U_i:=\Phi(Z_i)$: percentile of user $i$ under the latent Gaussian draw.
+$$
+U_i=\Phi(Z_i),\qquad G_G(x_i)=F_G^{-1}(U_i).
+$$
 
 ---
 
-# What Nakagami Models
+# Formalising Objective: Gaussian Field Interpretation
 
-- **Nakagami** is a probabilistic model for how the received amplitude of one radio link fluctuates
-- It is commonly used to represent different severities of line-of-sight or multipath fading on that one link
-- So it belongs to the **single-link fading** layer of modeling
-
-<!--
-This slide gives the fair definition first, before the exclusion argument on the
-next slide.
--->
-
----
-
-# Why Not Just Use Nakagami?
-
-- **Nakagami** is a single-link fading model
-- This study is about **beam-wide spatial attenuation**, not single-link fading
-- Adding Nakagami here would create a different study and make this one harder to interpret
-- A bit like using quantum physics to model football
-- Same deal with ephemerides, 3D, etc - not needed
-
-<!--
-Source: outline slide 3.
-Original content preserved:
-That is a legitimate realism choice for a different study.
-But here the main question is:
-- if attenuation has spatial structure across the beam, does a Gaussian field approximation produce a better RB-dimensioning model than a simple iid baseline?
-
-To answer that, we need to know:
-- whether many users are jointly sitting in a bad region;
-- whether the loss geometry is one large zone or many small clusters;
-- whether nearby users share similar attenuation;
-- how those spatial patterns change total beam demand.
-
-Nakagami by itself does not specify that spatial structure.
-
-So the right framing is:
-- Nakagami belongs to a different modeling level;
-- this project is not working at the individual-user-equipment fading level at all;
-- bringing it in would move the work away from the beam-level spatial dimensioning question we are actually studying.
-- Why it is not the right model here: our study is not about fluctuations of one link; it is about how attenuation is arranged across many users in the beam, because RB dimensioning depends on the joint spatial demand created by all users together.
-- Second rebuttal: even if every user had a Nakagami link, we would still need a separate spatial attenuation model to say which users are jointly in blocked regions and how that changes total beam demand.
-
-Speaker notes:
-"Realism is only useful when it is realism in the mechanism under test."
-If someone asks why Nakagami is not used, the answer is:
-- because Nakagami adds realism in single-link fading;
-- this study is about realism in spatial attenuation structure;
-- those are not the same thing.
-If needed, say explicitly:
-- this project does not go down to the individual-user-equipment fading level;
-- that is not a missing detail here, it is a different study altogether.
-If a stronger sentence is needed in the room, use:
-"Adding every realistic detail is not rigor. If the added detail does not help answer the question under test, it is just another way to blur the result."
--->
+- Step 1 (dependence): draw the latent correlated Gaussian vector $Z(X)\sim\mathcal{N}(0,K_\ell(X))$.
+- Step 2 (percentiles): for each user, convert latent value to a percentile
+  $U_i=\Phi(Z_i)\in[0,1]$.
+- Step 3 (target marginal): map percentile into log-shadowing
+  $G_G(x_i)=F_G^{-1}(U_i)$.
+- Meaning of $G_G(x_i)=F_G^{-1}(U_i)$: "take percentile $U_i$ and read off the corresponding quantile of $F_G$."
+- Consequence:
+  for each user $i$, $G_G(x_i)\sim F_G$,
+  and cross-user dependence comes from $K_\ell$ through $Z(X)$.
 
 ---
 
-# Single-Link vs Beam-Wide Realism
+# Formalising Objective: Demand Map
 
-![w:980px](slide_assets/nakagami_vs_spatial.svg)
+For fixed user geometry $X$, the demand map is
+$$
+G \mapsto D(X,G).
+$$
 
-<!--
-Split-out diagram from the Nakagami slide so the visual has enough room in Marp.
-Use this slide to say:
-- Nakagami is about one link;
-- this study is about many users under a spatial attenuation map;
-- the beam-wide spatial structure is the realism axis that matters here.
--->
+In terms of resource blocks: for any user geometry $X$ and any shadowing field $G$,
+$$
+D(X,G)=\sum_{i=1}^{N} N_{\mathrm{RB}}(x_i;G)
+$$
+is the total beam demand, where $N_{\mathrm{RB}}(x_i;G)$ is computed from the required user bit rate $c$, per-RB bandwidth $W_{\mathrm{RB}}$ (a system parameter), and spectral efficiency $\eta(x_i;G)$ (achievable bits/s/Hz at location $x_i$ under field $G$).
 
----
-
-# Why This Work Exists
-
-- Long-term satellite dimensioning depends on beam-level RB demand estimates under uncertain spatial attenuation
-- Underestimating demand risks too few satellites; overestimating it wastes scarce capacity
-- Spatial structure changes that demand estimate, so the attenuation model matters
-
-<!--
-Source: outline slide 4.
-Original content preserved:
-- Satellite systems must choose an RB budget before knowing the exact user geometry and attenuation pattern of a given instant.
-- If the budget is too small, users experience overload and poor service.
-- If the budget is too large, scarce satellite resources are wasted.
-- Shadowing is spatial: nearby users often experience similar attenuation.
-- So the dimensioning result depends on the spatial model, not just on average loss.
-
-Speaker notes:
-Now that the audience knows the modeling level, this slide can make the case for existence cleanly. Start from the practical decision problem: "how many RBs do we need?" Then explain that spatial structure changes that answer.
--->
+$$
+N_{\mathrm{RB}}(x_i;G)=\left\lceil\frac{c}{W_{\mathrm{RB}}\eta(x_i;G)}\right\rceil.
+$$
 
 ---
 
-# The Gap
+# Formalising Objective: Model Specification
 
-- **Uniform baseline:** simple, iid, ignores spatial structure
-- **Gaussian field:** adds correlation
-- Research question: **does the Gaussian assumption actually improve the dimensioning decision through better RB demand prediction?**
+- $F_G$: fixed shared one-point marginal law (the same for all compared models).
+- $\mathcal{M}$: set of model specifications for the spatial field law given $F_G$ (dependence structure + fixed parameters).
+  - examples: $U$ (iid baseline), $(G,\theta)$ (Gaussian surrogate with parameter vector $\theta$), and $\star$ (benchmark truth)
+- $G_M$: field induced by model specification $M\in\mathcal{M}$.
 
-![w:900px](slide_assets/truth_models.svg)
+---
 
-<!--
-Source: outline slide 5.
-Original content preserved:
-- A simple baseline treats each user's shadowing independently.
-- That ignores the fact that real attenuation often comes in spatial patterns: blocked regions, bands, and clusters.
-- A Gaussian field model is a natural next step because it introduces spatial correlation.
-- But correlation alone is not enough: we need to know whether it actually improves dimensioning decisions.
+# Formalising Objective: Budget Output
 
-Speaker notes:
-The audience should leave this slide knowing the exact scientific gap: "Does the Gaussian-field assumption improve the decision we care about?"
--->
+For any candidate model specification $M\in\mathcal{M}$, the budget dimensioning output is
+$$
+B_M=\min\Bigl\{b\in\mathcal{G}_{\mathrm{RB}}:\widehat{\mathbb{P}}_n\bigl(D(X,G_M)>b\bigr)\le\varepsilon\Bigr\}.
+$$
+
+- Here $\mathcal{G}_{\mathrm{RB}}\subset\mathbb{N}$ is the tested grid of candidate beam RB budgets.
+- $\varepsilon\in(0,1)$ is the target outage probability.
+- $\widehat{\mathbb{P}}_n$ is the empirical outage frequency estimated from $n$ Monte Carlo trials.
+- This is the model-side budget selection rule under model $M$.
+
+---
+
+# Formalising Objective: Decision Comparison
+
+- Truth-side empirical evaluation uses $\widehat{\mathbb{P}}^\star_n\!\left(D(X,G^\star)>B_M\right)$.
+- Benchmark truth budget:
+$$
+B^\star=\min\{b\in\mathcal{G}_{\mathrm{RB}}:\widehat{\mathbb{P}}^\star_n(D(X,G^\star)>b)\le\varepsilon\}.
+$$
+- Comparison criterion: $|B_G-B^\star|<|B_U-B^\star|$.
+- The target of interest is **the budget decision**. Pointwise recovery of $G(x)$ is secondary.
+
+
+---
+
+# Formal Objective
+
+Define the model-side budget error against truth:
+$$
+\Delta_M:=|B_M-B^\star|,\qquad M\in\{U,G\}.
+$$
+
+$$
+\text{With }X,\ D(X,\cdot),\ F_G,\ \varepsilon,\ \mathcal{G}_{\mathrm{RB}}\ \text{fixed, identify truth-field classes }\mathcal{C}
+\text{ such that }\Delta_G<\Delta_U\ \text{for }G^\star\in\mathcal{C}.
+$$
+
+- In words: among structured non-Gaussian truth fields, when does replacing iid dependence with Gaussian dependence produce a beam budget closer to truth?
+
+---
+
+# Fair Comparison Principle
+
+- The user geometry $X$ is the same for all compared models.
+- The one-point marginal law $F_G$ is the same for all compared models.
+- The pathloss convention and the demand map $G \mapsto D(X,G)$ are the same.
+- The outage target $\varepsilon$ and budget grid $\mathcal{G}_{\mathrm{RB}}$ are the same.
+
+So the comparison isolates one question:
+
+$$
+\text{does changing the \emph{dependence structure} improve the dimensioning decision?}
+$$
+
+---
+
+# Competing Surrogates
+
+**iid baseline**
+$$
+G_U(x_i)\stackrel{\mathrm{iid}}{\sim}F_G.
+$$
+
+**Gaussian surrogate**
+$$
+Z(X)\sim\mathcal{N}\!\bigl(0,K_\ell(X)\bigr),
+\qquad
+\bigl[K_\ell(X)\bigr]_{ij}=\exp\!\left(-\frac{\|x_i-x_j\|^2}{2\ell^2}\right),
+$$
+$$
+U_i=\Phi(Z_i),
+\qquad
+G_G(x_i)=F_G^{-1}(U_i).
+$$
+
+- Both surrogates share the same marginal $F_G$.
+- $Z(X)$ is the latent Gaussian fluctuation over the realized users.
+- $K_\ell(X)$ is the geometry-dependent covariance matrix, and $\ell$ is its physical correlation length.
+- $U_i$ is the percentile assigned to user $i$ before mapping into the physical shadowing law $F_G$.
+
+![bg right:34% contain](slide_assets/truth_models.svg)
 
 ---
 
 # Why Simulation Is Necessary
 
-- The question is comparative: which approximation is better against a controlled truth
-- Only simulation lets us impose arbitrary obstruction geometries as truth without first forcing them into one tractable analytic family
-- An analytic-first treatment would have to choose a tractable spatial shadowing law up front, which would also restrict the obstruction geometries we could represent cleanly within that treatment
-  - e.g. a smooth stationary Gaussian field does not natively encode a hard-edged blocked square or alternating vertical strips as the truth model
+- The question is **comparative**: which approximation is better against a controlled truth?
+- An analytic-first treatment would force us to choose a tractable truth family up front.
+- That would risk baking the Gaussian answer into the setup.
 
+The benchmark truth budget is
+$$
+B^\star=\min\Bigl\{b\in\mathcal{G}_{\mathrm{RB}}:\mathbb{P}\bigl(D(X,G^\star)>b\bigr)\le\varepsilon\Bigr\}.
+$$
 
-<!--
-Source: outline slides 6 and 7.
-Original content preserved:
-- We are not asking for the performance of one assumed model.
-- We are asking whether one approximation is better than another when the true attenuation pattern has spatial structure.
-- If we started from one closed-form model and solved everything analytically, we would already be assuming the answer.
-- Simulation lets us define controlled truth scenarios that are not forced to be uniform or Gaussian.
-- Then we can test both candidate models against the same truth.
-
-Example preserved:
-- suppose the true attenuation pattern is a large blocked square in the middle of the beam;
-- now compare two approximations on that same truth:
-  - iid uniform shadowing per user;
-  - correlated Gaussian field shadowing.
-- if we began by assuming a Gaussian field analytically, then the Gaussian assumption would already be built into the setup.
-- simulation avoids that circularity: it lets us define the square-obstruction truth first, then ask which approximation is closer.
-
-What simulation gives us that a closed-form model does not:
-- A truth model with explicit spatial obstruction geometry.
-- The same PPP user geometry fed to all compared models.
-- A direct way to measure prediction error and dimensioning error.
-- A controlled way to see where Gaussian structure helps and where it fails.
-
-Speaker notes:
-Simulation is not being used because analysis is impossible or because we want pretty plots. It is used because the scientific question is about model mismatch: we need a known truth pattern, then we need to ask which approximation makes the better dimensioning decision against that truth.
--->
+- If $G^\star$ is already Gaussian by construction, the test is weak.
+- So the truth family should be spatially structured, but not Gaussianized for convenience.
 
 ---
 
-# What Simulation Gives Us
+# Benchmark Truth Family
 
-- We can specify the truth first: squares, strips, or circles, or amorphous clouds or other atmospheric phenomena
-- We can run both candidate models on the **same** PPP user geometry
-- We can measure prediction error and dimensioning error on equal footing
+We use explicit obstruction sets $A_s\subset\mathcal{B}$ and define
+$$
+G^\star_s(x)=g_{\mathrm{clear}}+\Delta g\,\mathbf{1}_{A_s}(x),
+\qquad
+\Delta g<0.
+$$
 
-<!--
-This slide is the practical complement to the previous one.
+- The attenuation penalty is fixed.
+- The geometry of $A_s$ changes with the scenario.
+- This isolates the effect of **spatial shape** rather than trivial changes in average loss.
 
-The argument is:
-- first explain why analytic-first is circular for this study;
-- then explain what simulation uniquely gives us as a controlled experiment.
--->
+In words:
 
----
-
-# Research Questions
-
-1. Is a Gaussian field better than an iid uniform baseline for predicting demand and dimensioning RB budgets?
-2. Does the answer depend on the **shape** of the attenuation pattern?
-3. Which obstruction patterns are captured well by a Gaussian field, and which are not?
-
-<!--
-Source: outline slide 8.
-Speaker notes preserved:
-This keeps the story tight. It also stops the audience from thinking the goal is "prove Gaussian is always best." That is not what the current results say.
--->
+- one large blocked region
+- strip-like blocked regions
+- multiple separated blocked clusters
 
 ---
 
-# What We Compare
+# Ground-Truth Scenario Geometry
 
-- **Truth model:** explicit obstruction scenarios inside a circular beam
-- **Uniform baseline:** independent log-shadowing draws per user
-- **Gaussian model:** correlated Gaussian log-shadowing field
-
-![bg right:38% contain](slide_assets/truth_models.svg)
-
-<!--
-Source: outline slide 9.
-Original content preserved:
-- Truth model: deterministic obstruction scenarios placed inside a circular beam.
-- Uniform baseline: each user gets an independent log-shadowing draw from a fixed interval.
-- Gaussian model: users see a correlated Gaussian log-shadowing field.
-
-Why this matters:
-- the truth model defines what actually happens in the experiment;
-- the uniform and Gaussian models are competing approximations.
-
-Speaker notes:
-This slide is important because many people confuse the Gaussian model with the truth model. Make it explicit: Gaussian is not "the answer"; it is one of the candidate approximations being tested.
--->
-
----
-
-# Ground-Truth Obstruction Scenarios
-
-- **Centered square:** one large blocked region
-- **Vertical bands:** strip-like blocked regions
-- **Multiple circles:** several separated blocked clusters
-
-<!--
-Source: outline slide 13.
-Speaker notes preserved:
-This slide sets up the most important result later: Gaussian does not behave the same way on all scenario types.
--->
-
----
-
-# Obstruction Scenario Geometry
+- **Centered square:** one large contiguous blocked region
+- **Vertical bands:** alternating strip-like structure
+- **Multiple circles:** several separated local blocked regions
 
 ![w:1000px](slide_assets/scenarios.svg)
 
-<!--
-Split-out diagram from the obstruction-scenarios slide so the geometry picture
-has enough room in Marp. Use this slide to point to the difference between one
-large contiguous blocked region, banded structure, and clustered local blocks.
--->
+---
+
+# One Trial
+
+1. Sample one PPP user geometry $X$ in the beam.
+2. Evaluate the truth field $G^\star_s$ on those user locations.
+3. Compute the true total demand $D(X,G^\star_s)$.
+4. On that same geometry, draw the surrogate models.
+5. Convert those draws to total demand and compare with truth.
+
+The same realized geometry is fed to truth, iid, and Gaussian models.
+
+![bg right:37% contain](slide_assets/trial_workflow.svg)
 
 ---
 
-# One Trial, Part 1
+# Randomness Structure
 
-1. Sample PPP user positions in the circular beam
-2. Evaluate the chosen obstruction scenario on those user positions
-3. Convert shadowing to per-user PRB demand
+- **Outer randomness:** a new PPP geometry $X$ each trial.
+- **Inner randomness:** conditional on a fixed $X$, the surrogate models still draw shadowing values.
+- In the current truth family, once $X$ and the scenario $s$ are fixed, $G^\star_s$ is deterministic.
 
-<!--
-Source: outline slide 10.
-Speaker notes preserved:
-One trial means one realized user geometry and one realized truth-side demand. Keep it procedural.
--->
+For model $M\in\{U,G\}$, the inner Monte Carlo predictor is
+$$
+\widehat{D}_M(X)=\frac{1}{L}\sum_{j=1}^{L} D\bigl(X,G_M^{(j)}\bigr).
+$$
 
----
+This separates:
 
-# One Trial, Part 2
-
-4. Sum to get the **true total demand** for that instant
-5. Ask the uniform and Gaussian models what they would predict on that same geometry
-6. Compare prediction errors
-
-<!--
-Split from the previous slide so the procedure stays readable in live delivery.
--->
+- randomness of the world
+- randomness of the model's prediction mechanism
+- $j$ indexes repeated surrogate draws on the same fixed user geometry
+- $\widehat{D}_M(X)$ is the model's predicted total beam demand on that geometry
 
 ---
 
-# One Trial as a Workflow
+# What We Measure
 
-![w:980px](slide_assets/trial_workflow.svg)
+**Trial-level prediction error**
+$$
+e_M(X;s)=\bigl|D(X,G^\star_s)-\widehat{D}_M(X)\bigr|,
+\qquad M\in\{U,G\}.
+$$
 
-<!--
-Split-out diagram from the one-trial slide so the visual has enough room in Marp.
-Use this slide to walk left-to-right through:
-- PPP geometry;
-- truth obstruction;
-- model predictions;
-- true total demand;
-- error comparison.
--->
+**Budget-level decision output**
+$$
+B_M=\min\Bigl\{b\in\mathcal{G}_{\mathrm{RB}}:\mathbb{P}\bigl(D(X,G_M)>b\bigr)\le\varepsilon\Bigr\}.
+$$
 
----
-
-# Where the Randomness Comes From
-
-- **Outer randomness:** a new PPP user geometry each trial
-- **Inner randomness:** on one fixed geometry, the uniform and Gaussian models still draw random shadowing values
-- In the current truth model, the obstruction pattern is deterministic once geometry is fixed
-
-<!--
-Source: outline slide 11.
-Original content preserved:
-This is why we use repeated inner prediction draws on one fixed geometry.
-
-Speaker notes:
-This slide is essential because this was the main source of confusion earlier.
-Explain it slowly:
-- outer loop = new world;
-- inner loop = repeated model guesses for the same world.
--->
+- Trial-level superiority and budget-level superiority are related, but they are not the same object.
+- A model can improve demand prediction without immediately changing the selected budget on a coarse grid.
 
 ---
 
-# What an Inner Prediction Draw Means
+# Experimental Controls
 
-- On one fixed PPP geometry, draw the **uniform** model multiple times
-- On that same geometry, draw the **Gaussian** model multiple times
-- Average each model's total demand and compare those averages to the one true realized demand
+- Beam radius: $10$
+- PPP intensity: $\lambda=1$
+- Expected users per trial: about $314$
+- Per-user RB cap: $10$
+- Trials per seed-scenario: $100$
+- Inner prediction draws per trial: $10$
+- Candidate budget grid: $500,1000,\dots,6000$
+- Current Gaussian kernel family: RBF
+- Current Gaussian spatial parameter: correlation length $\ell$
 
-<!--
-Source: outline slide 12.
-Speaker notes preserved:
-This is the plain-language explanation of the Monte Carlo procedure. The goal is not to overwhelm the audience with statistics. The goal is to make it clear that the model is being evaluated on repeated guesses for the same fixed geometry.
--->
+Methodological point:
 
----
-
-# Tentative Study Scale
-
-- Beam radius: **10** units -> beam area **about 314** units
-  - 1 unit can be anything where light speed is not very relevant
-  - e.g. 5 nanometer, 2.5 metre, 1 kilometer, etc
-- PPP intensity: **1 user per unit area** -> **about 314 expected users per trial**
-- PRB cap per user: **10**
-
-<!--
-Split from the old example-setup slide so scale and Monte Carlo settings do not
-fight for space.
--->
+- the geometry family is simple on purpose
+- the present goal is clean identification, not maximum realism
 
 ---
 
-# Tentative Monte Carlo Setup
+# What This Methodology Gives Us
 
-- **10** seeds and **100** trials per seed-scenario
-- **10** inner prediction draws per trial
-- Budget grid **500 to 6000** and **3000** pooled trial-level comparisons
+- A clean separation between **truth**, **surrogate**, and **decision map**
+- A fair iid-vs-Gaussian comparison with the same marginal $F_G$
+- A way to ask whether Gaussian dependence helps on some spatial geometries but not others
+- A controlled benchmark before adding richer physics or harder calibration layers
 
-<!--
-Source: outline slide 14.
-Original content preserved:
-- Seeds: 10
-- Trials per seed-scenario: 100
-- Inner prediction draws per trial: 10
-- 3 scenarios x 10 seeds x 100 trials = 3000 comparisons
-
-Speaker notes:
-This is where you reassure the audience that the study is not just a toy. Several hundred users per trial is already meaningful, and the setup is explicit enough to be reproducible.
--->
+This is the actual mathematical question:
+$$
+\text{for which truth families is } B_G \text{ closer to } B^\star \text{ than } B_U?
+$$
 
 ---
 
-# What We Measure: Two Different Objects
+# Methodological Message
 
-- **Budget-level output:** overload frequency over the RB grid, then the smallest budget meeting target outage
-- **Trial-level certificate:** on each trial, ask whether Gaussian predicts total demand more accurately than uniform
-- **Stored outputs:** aggregate summaries in **`result_summary.txt`**, raw rows in **`result_table.txt`**
+- The aim is not to prove that Gaussian structure is always best.
+- The aim is to characterize when a dependence-aware surrogate improves the decision we care about.
+- The current deck is therefore about **experimental design and mathematical comparability**, not yet about final empirical claims.
 
-<!--
-Source: outline slide 15.
-Speaker notes preserved:
-This is where you prevent a second common confusion: required-budget results and per-trial prediction certificates are related, but they are not the same object.
-Current file mapping:
-- `result_summary.txt` = pooled certificate + per-scenario summaries
-- `result_table.txt` = raw trial rows + raw seed-level dimensioning rows
-- old `results.txt` is obsolete and should not be used for cross-checking
--->
+That is why the right first deliverable is a coherent benchmark methodology.
 
 ---
 
-# Trial-Level Object: Certificate / Prediction Results on the Example
+<style scoped>
+section {
+  font-size: 1.5em;
+}
+</style>
+# Symbols I
 
-| Scenario | Gaussian better rate | Certified? | Uniform mean abs. error | Gaussian mean abs. error |
-|---|---:|---:|---:|---:|
-| Square center | 0.999 | Yes | 678.54 | 591.09 |
-| Vertical bands | 0.999 | Yes | 682.18 | 594.73 |
-| Multi circles | 0.001 | No | 133.96 | 221.40 |
+### Geometry and Users
 
-**Pooled:** 1999 / 3000 successes, success probability 0.6663, lower bound 0.6440, certified = Yes
-
-- Treat this as a **tentative diagnostic result**, not a final model ranking
-- The extreme scenario-by-scenario outcomes may indicate either bugs or that the current scenarios are not yet well designed to differentiate the models cleanly
-- Source: **`result_summary.txt`**
-
-<!--
-Source: outline slide 16.
-Speaker notes preserved:
-Do not overclaim from this slide.
-
-Safer live wording:
-- the pooled result is interesting, but it is not yet the main claim;
-- the scenario breakdown currently looks too extreme;
-- that can happen either because there is still a bug somewhere or because the current obstruction scenarios are not yet giving a good differentiating test of the models.
-
-So the correct takeaway is not yet:
-- "Gaussian wins here and fails there."
-
-The correct takeaway is:
-- "the framework is now revealing where the comparison is unstable, and that tells us what must be improved next."
--->
+- $\mathcal{B}$: physical beam footprint in the user plane.
+- $x$: physical location of one user in that footprint.
+- $\lambda$: mean user density per unit area in the footprint.
+- $N$: number of active users in one realized beam.
+- $X=\{x_i\}_{i=1}^{N}$: realized set of user locations in that beam.
+- $x_i$: physical location of user $i$.
+- $s$: index labeling one obstruction geometry.
+- $A_s$: physically blocked region for scenario $s$.
 
 ---
 
-# Budget-Level Object: Tentative Dimensioning Summary
+<style scoped>
+section {
+  font-size: 1.2em;
+}
+</style>
+# Symbols II
 
-| Scenario | True required budget (median over 10 seeds) | Gaussian chosen budget (median) | Uniform chosen budget (median) |
-|---|---:|---:|---:|
-| Square center | 2000 | 1000 | 1000 |
-| Vertical bands | 1500 | 1000 | 1000 |
-| Multi circles | 1000 | 1000 | 1000 |
+### Channel and Demand
 
-- Under the current tentative budget grid, the budget-level outputs are much coarser than the trial-level certificate outputs
-- In this setup, the Gaussian advantage appears clearly in prediction accuracy before it appears in chosen budget
-- Source: medians computed from the seed-level rows in **`result_table.txt`**
-
-<!--
-This is the separate budget-level object and should not be mixed with the
-certificate table above.
-
-These numbers were computed as seed-level truth-anchored repeated-trial
-dimensioning summaries over the 10 standard tentative seeds, then summarized
-by median required budget per scenario.
-
-Computed summary:
-- square_center: truth median 2000, uniform median 1000, gaussian median 1000
-- vertical_bands: truth median 1500, uniform median 1000, gaussian median 1000
-- multi_circles: truth median 1000, uniform median 1000, gaussian median 1000
-
-Interpretation:
-- the current budget grid is coarse;
-- with this tentative setup, chosen budgets do not yet separate uniform and
-  Gaussian, even though the trial-level prediction certificate does;
-- that is not a contradiction, it is a difference between the two statistical
-  objects.
--->
+- $F_G$: one-point probability distribution of log-shadowing for a single user.
+- $G_0$: generic one-user log-shadowing value drawn from $F_G$.
+- $G$: generic shadowing field over the whole beam.
+- $d(x)$: slant range from the satellite to location $x$.
+- $h$: satellite altitude above beam center.
+- $r(x)$: ground-plane offset of location $x$ from beam center.
+- $SNR_0$: reference clear-sky SNR at the reference distance.
+- $\gamma$: pathloss exponent in the deterministic propagation law.
+- $\mathrm{SNR}(x;G)$: SNR of the user at location $x$ under shadowing field $G$.
+- $\eta(x;G)$: spectral efficiency available to that user under field $G$.
+- $\eta_{\min}$: minimum spectral-efficiency floor imposed by the model.
+- $c$: required user bit rate.
+- $W_{\mathrm{RB}}$: bandwidth of one resource block.
+- $N_{\mathrm{RB}}(x;G)$: RB demand of the user at location $x$ under field $G$.
+- $D(X,G)$: total beam RB demand for user geometry $X$ under field $G$.
+- $g_{\mathrm{clear}}$: clear-sky log-shadowing level outside blocked regions.
+- $\Delta g$: additional attenuation penalty inside a blocked region.
 
 ---
 
-# Interpretation
+<style scoped>
+section {
+  font-size: 1.2em;
+}
+</style>
+# Symbols III
 
-- The current tentative result is **not** a finished claim about Gaussian dimensioning
-- The present value is methodological: the framework can now test explicit obstruction patterns against competing models
-- The main issue is geometry-dependent sign reversal while the budget-level outputs remain only weakly separated
+### Models and Outputs
 
-<!--
-Source: outline slides 17, 18, and 19.
-Original content preserved:
-What is new here:
-- A clear truth-vs-model comparison setup.
-- Explicit spatial obstruction scenarios.
-- A repeated-trial RB-dimensioning pipeline.
-- A trial-level statistical certificate comparing Gaussian and uniform.
-- Reproducible tentative tests with structured outputs.
-
-Why it matters:
-- Satellite RB dimensioning depends on uncertainty in spatial attenuation.
-- Simple baselines may miss important spatial structure.
-- More expressive models are only useful if they improve the actual decision.
-- This work provides an evidence-based way to decide when a Gaussian spatial model is worth using.
-
-Speaker notes:
-Back off cleanly here. The audience should not leave thinking we already have a polished final result.
-
-Safer live wording:
-- the current numerical results are tentative;
-- the real value right now is that we now have a way to test spatial-model assumptions against explicit obstruction patterns;
-- the current winner-takes-all outcomes are useful mainly because they tell us the framework still needs work;
-- the correct response is not to add more realism;
-- the correct response is to keep the basic scenario family fixed, resolve calibration and bug issues, and then see whether the opposite outcomes remain;
-- if they remain, that is exactly the scientific phenomenon we should study.
-
-End by returning to the disciplined study design rather than to a strong model-ranking claim.
--->
-
----
-
-# What We Hold Fixed For Now
-
-- **Squares, vertical strips, and circles are enough** for now
-- We should **not** add more scenario realism until the calibration and bug questions are resolved
-- The immediate job is to explain the opposite outcomes, not to bury them under more detail
-
-
-<!--
-This slide makes the scope decision explicit: hold geometry fixed, debug first.
--->
-
----
-
-# Next Steps: Validation First
-
-- First priority: confirm the current pipeline is bug free and statistically coherent
-- Keep the current scenario family fixed until that validation is complete
-- No richer realism before the current regime is trusted
-
-<!--
-Source: outline slide 20.
-Speaker notes preserved:
-This slide should repeatedly communicate that the work is far from finished.
--->
-
----
-
-# Next Steps: Modeling After Validation
-
-- The blockage law is still preliminary: it is a constant dB penalty inside blocked regions
-- Broader geometry design, Gaussian parameter sweeps, and larger user scales come later
-- None of that should start until the current regime is trusted
-
-<!--
-Use this slide to push back on premature realism and premature scaling.
--->
-
----
-
-# If the Contrast Persists
-
-- Resolve the calibration / bug issue behind the opposite outcomes first
-- If the opposite outcomes survive validation, make them the scientific target itself
-- In that case, the current simple geometry family is not a weakness; it is the right controlled setting
-
-<!--
-Suggested spoken closing:
-"The path forward is not to overclaim from a tentative first run. The path
-forward is to keep the scenario family fixed, remove bugs, fix calibration, and
-then see whether the opposite outcomes remain. If they do, that is exactly
-what we need to study."
--->
-
----
-
-# One-Sentence Summary
-
-Built a reproducible experiment for comparing spatial attenuation models, and the immediate task is to validate the pipeline under fixed simple geometry and attenuation assumptions; if the current opposite outcomes persist after that, they become the scientific phenomenon to study.
-
-<!--
-Source: backup slide from the outline.
--->
+- $\mathcal{M}$: set of compared model specifications.
+- $M\in\mathcal{M}$: one model specification (family + fixed parameters), e.g. $U$, $(G,\theta)$, or $\star$.
+- $G_M$: shadowing field produced by model $M$.
+- $G_U$: iid baseline shadowing field.
+- $G_G$: correlated Gaussian surrogate shadowing field.
+- $G^\star$: benchmark truth shadowing field.
+- $G^\star_s$: benchmark truth shadowing field for scenario $s$.
+- $Z(X)$: latent Gaussian vector used to couple nearby users spatially.
+- $U_i$: percentile assigned to user $i$ by the latent Gaussian draw.
+- $K_\ell(X)$: covariance matrix induced by the user geometry.
+- $\ell$: physical correlation length in the Gaussian surrogate.
+- $\Phi$: standard normal CDF used to map Gaussian draws into marginal percentiles.
+- $L$: number of inner Monte Carlo draws on one fixed user geometry.
+- $j$: index of one inner Monte Carlo draw on that fixed geometry.
+- $\widehat{D}_M(X)$: Monte Carlo predictor of total beam demand under model $M$.
+- $e_M(X;s)$: trial-level absolute demand error under model $M$ in scenario $s$.
+- $\varepsilon$: target overload or outage probability.
+- $\mathcal{G}_{\mathrm{RB}}$: tested grid of beam RB budgets.
+- $b$: one candidate beam RB budget from that grid.
+- $B_U,B_G,B^\star$: budgets selected under the iid, Gaussian, and truth models.
+- $B_M$: budget selected by model $M$.

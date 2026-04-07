@@ -177,10 +177,8 @@ $$
 \text{With geometry law }\mathcal{L}_X\ (\text{e.g. }X\sim\mathrm{PPP}(\lambda)\text{ on }\mathcal{B}),\ D(X,\cdot),\ F_G,\ \varepsilon,\ \mathcal{G}_{\mathrm{RB}}\ \text{fixed,}
 $$
 $$
-\text{identify truth-field classes }\mathcal{C}\text{ and Gaussian parameter regimes }\Theta_0
-$$
-$$
-\text{ such that }\Delta_{(G,\theta)}<\Delta_U\ \text{for }G^\star\in\mathcal{C},\ \theta\in\Theta_0.
+\text{identify structured truth classes }\mathcal{C}\text{ for which }\exists\theta\in\Theta_0\text{ such that }
+\Delta_{(G,\theta)}<\Delta_U\ \text{for }G^\star\in\mathcal{C}.
 $$
 
 - Here "fixed geometry" means the distribution $\mathcal{L}_X$ is fixed, not one single realized $X$.
@@ -189,7 +187,36 @@ $$
 
 ---
 
-# Fair Comparison Principle
+# No-Free-Lunch (NFL) Motivation for Objective
+
+- Averaged uniformly over all possible problems $f:X\to Y$, no algorithm has a universal advantage
+$$
+\forall A,B,\quad
+\frac{1}{|Y|^{|X|}}\sum_{f\in Y^X}\mathrm{Perf}(A,f,m)
+=
+\frac{1}{|Y|^{|X|}}\sum_{f\in Y^X}\mathrm{Perf}(B,f,m).
+$$
+
+- $X$: finite input/search domain.
+- $Y$: finite output/value set.
+- $f\in Y^X$: one optimization problem (objective mapping) from $X$ to $Y$.
+- $A,B$: two optimization algorithms.
+- $m$: evaluation budget (number of function queries/steps).
+- $\mathrm{Perf}(A,f,m)$: performance of algorithm $A$ on problem $f$ after budget $m$.
+
+---
+
+# NFL in Our Context
+
+- In our context: over all possible truth fields, Gaussian dependence cannot beat iid uniformly.
+- So the question is meaningful only after defining a structured truth/search class $\mathcal{C}$.
+- This motivates two steps:
+  - first, restrict the objective to a structured truth class $\mathcal{C}$;
+  - then enforce fair comparison under matched assumptions inside that class.
+
+---
+
+# Fair Comparison 
 
 - Within each trial, the realized user geometry $X$ is the same for all compared models.
 - Across trials, $X$ is resampled from the same fixed geometry law $\mathcal{L}_X$.
@@ -200,12 +227,36 @@ $$
 So the comparison isolates one question:
 
 $$
-\text{does changing the \emph{dependence structure} improve the dimensioning decision?}
+\text{which structured truth classes }\mathcal{C}\text{ admit a Gaussian advantage, i.e. }
+\exists\theta\in\Theta_0\ \text{with }|\widehat{B}_{(G,\theta)}-\widehat{B}^\star|<|\widehat{B}_{U}-\widehat{B}^\star|?
 $$
 
 ---
 
-# Competing Surrogates
+# Why Simulation Is Necessary
+
+- The question is **comparative**: which approximation is better against a controlled truth?
+- An analytic-first treatment would force us to choose a tractable truth family up front.
+- That would risk baking the Gaussian answer into the setup.
+
+The benchmark truth budget is
+$$
+\widehat{B}^\star=\min\Bigl\{b\in\mathcal{G}_{\mathrm{RB}}:\widehat{\mathbb{P}}^\star_n\bigl(D(X,G^\star)>b\bigr)\le\varepsilon\Bigr\}.
+$$
+
+- If $G^\star$ is already Gaussian by construction, the test is weak.
+- So the truth family should be spatially structured, but not Gaussianized for convenience.
+
+---
+
+# Competing Surrogates (Recap)
+
+![w:1000px](slide_assets/truth_models.svg)
+
+
+---
+
+# Competing Surrogates (Recap)
 
 **iid baseline**
 $$
@@ -227,25 +278,7 @@ $$
 - Both surrogates share the same marginal $F_G$.
 - $Z(X)$ is the latent Gaussian fluctuation over the realized users.
 - $K_\ell(X)$ is the geometry-dependent covariance matrix, and $\ell$ is its physical correlation length.
-- $U_i$ is the percentile assigned to user $i$ before mapping into the physical shadowing law $F_G$.
-
-![bg right:34% contain](slide_assets/truth_models.svg)
-
----
-
-# Why Simulation Is Necessary
-
-- The question is **comparative**: which approximation is better against a controlled truth?
-- An analytic-first treatment would force us to choose a tractable truth family up front.
-- That would risk baking the Gaussian answer into the setup.
-
-The benchmark truth budget is
-$$
-\widehat{B}^\star=\min\Bigl\{b\in\mathcal{G}_{\mathrm{RB}}:\widehat{\mathbb{P}}^\star_n\bigl(D(X,G^\star)>b\bigr)\le\varepsilon\Bigr\}.
-$$
-
-- If $G^\star$ is already Gaussian by construction, the test is weak.
-- So the truth family should be spatially structured, but not Gaussianized for convenience.
+- $U_i$ is the percentile assigned to user $i$ before mapping into the shadowing law $F_G$.
 
 ---
 
@@ -258,11 +291,13 @@ G^\star_s(x)=g_{\mathrm{clear}}+\Delta g\,\mathbf{1}_{A_s}(x),
 \Delta g<0.
 $$
 
-- The attenuation penalty is fixed.
-- The geometry of $A_s$ changes with the scenario.
+- $A_s$: blocked subset of the footprint for scenario $s$.
+- $\mathbf{1}_{A_s}(x)$: indicator (equals $1$ if $x\in A_s$, else $0$).
+- $g_{\mathrm{clear}}$: clear-sky log-shadowing level outside blocked regions.
+- $\Delta g<0$: fixed attenuation penalty applied inside blocked regions.
 - This isolates the effect of **spatial shape** rather than trivial changes in average loss.
 
-In words:
+Examples:
 
 - one large blocked region
 - strip-like blocked regions
@@ -274,7 +309,7 @@ In words:
 
 - **Centered square:** one large contiguous blocked region
 - **Vertical bands:** alternating strip-like structure
-- **Multiple circles:** several separated local blocked regions
+- **Multiple circles:** several  local blocked regions
 
 ![w:1000px](slide_assets/scenarios.svg)
 
@@ -290,7 +325,13 @@ In words:
 
 The same realized geometry is fed to truth, iid, and Gaussian models.
 
-![bg right:37% contain](slide_assets/trial_workflow.svg)
+Truth-side clarification: for the current benchmark family, $D(X,G^\star_s)$ is deterministic on a fixed trial geometry $X$; Monte Carlo enters truth budgets only through many independent PPP trials (resampling $X$).
+
+---
+
+# One Trial (Workflow)
+
+![w:1000px](slide_assets/trial_workflow.svg)
 
 ---
 
@@ -304,6 +345,10 @@ For model $M\in\{U,G\}$, the inner Monte Carlo predictor is
 $$
 \widehat{D}_M(X)=\frac{1}{L}\sum_{j=1}^{L} D\bigl(X,G_M^{(j)}\bigr).
 $$
+
+---
+
+# Randomness Structure (Interpretation)
 
 This separates:
 
